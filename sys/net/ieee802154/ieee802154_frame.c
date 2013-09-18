@@ -231,7 +231,7 @@ uint8_t read_802154_frame(uint8_t *buf, ieee802154_frame_t *frame, uint8_t len)
 
     frame->payload = (buf + index);
     hdrlen = index;
-    frame->payload_len = (len - hdrlen);
+    frame->payload_len = (len - hdrlen - IEEE_802154_FCS_LEN);
 
     return hdrlen;
 }
