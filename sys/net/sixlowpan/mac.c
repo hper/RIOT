@@ -143,7 +143,7 @@ void recv_ieee802154_frame(void)
 
             p = (radio_packet_t *) m.content.ptr;
             hdrlen = read_802154_frame(p->data, &frame, p->length);
-            length = p->length - hdrlen;
+            length = p->length - hdrlen -IEEE_802154_FCS_LEN;
 
             /* deliver packet to network(6lowpan)-layer */
             lowpan_read(frame.payload, length, (ieee_802154_long_t *)&frame.src_addr,
