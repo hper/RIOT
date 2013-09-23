@@ -640,8 +640,10 @@ void recv_rpl_dio(void)
 
         if (rpl_dio_buf->rank != INFINITE_RANK) {
             char addr_str[IPV6_MAX_ADDR_STR_LEN];
-            DEBUG("Will join DODAG\n");
-            printf("%s", ipv6_addr_to_str(addr_str, &dio_dodag.dodag_id));
+            DEBUG("Will join DODAG: ");
+            #if ENABLE_DEBUG            
+                printf("%s\n", ipv6_addr_to_str(addr_str, &dio_dodag.dodag_id));
+            #endif
             rpl_join_dodag(&dio_dodag, &ipv6_buf->srcaddr, rpl_dio_buf->rank);
         }
         else {
