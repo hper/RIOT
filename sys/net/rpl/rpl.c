@@ -427,8 +427,10 @@ void send_DAO(ipv6_addr_t *destination, uint8_t lifetime, bool default_lifetime,
 
 void send_DAO_ACK(ipv6_addr_t *destination)
 {
+    #if ENABLE_DEBUG
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
     printf("%s\n", ipv6_addr_to_str(addr_str, destination));
+    #endif    
     rpl_dodag_t *my_dodag;
     my_dodag = rpl_get_my_dodag();
 
