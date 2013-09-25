@@ -23,6 +23,10 @@
 #define DAO_DELAY_STACKSIZE 3072
 #define RT_STACKSIZE 512
 
+#define TVO_DELAY_STACKSIZE 3072 // trail
+void delay_tvo(void); // trail
+void tvo_delay_over(void); // trail
+
 void reset_trickletimer(void);
 void init_trickle(void);
 void start_trickle(uint8_t DIOINtMin, uint8_t DIOIntDoubl, uint8_t DIORedundancyConstatnt);

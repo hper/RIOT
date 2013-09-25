@@ -28,6 +28,13 @@
 char *timer_over_buf;
 char *interval_over_buf;
 char *dao_delay_over_buf;
+
+char * tvo_delay_over_buf; // trail
+int tvo_delay_over_pid; // trail
+bool tvo_auto_send = false; // trail
+timex_t tvo_time; // trail
+vtimer_t tvo_timer; // trail
+
 char routing_table_buf[RT_STACKSIZE];
 int timer_over_pid;
 int interval_over_pid;
@@ -92,6 +99,13 @@ void init_trickle(void)
         return;
     }
 
+    //trail
+    tvo_delay_over_buf  =  calloc(TVO_DELAY_STACKSIZE,sizeof(char));
+        if(tvo_delay_over_buf == NULL){
+            puts("[ERROR] Could not allocate enough memory for interval_over_buf!");
+            return;
+        }
+
     /* Create threads */
     ack_received = true;
     timer_over_pid = thread_create(timer_over_buf, TRICKLE_TIMER_STACKSIZE,
@@ -107,6 +121,11 @@ void init_trickle(void)
     rt_timer_over_pid = thread_create(routing_table_buf, RT_STACKSIZE,
                                       PRIORITY_MAIN - 1, CREATE_STACKTEST,
                                       rt_timer_over, "rt_timer_over");
+    //trail
+    tvo_delay_over_pid = thread_create(tvo_delay_over_buf, TVO_DELAY_STACKSIZE,
+    										  PRIORITY_MAIN-1, CREATE_STACKTEST,
+    										  tvo_delay_over, "tvo_delay_over");
+
 }
 
 void start_trickle(uint8_t DIOIntMin, uint8_t DIOIntDoubl,
@@ -157,7 +176,7 @@ void trickle_interval_over(void)
     while (1) {
         thread_sleep();
         I = I * 2;
-        printf("TRICKLE new Interval %"PRIu32"\n", I);
+    //    printf("TRICKLE new Interval %"PRIu32"\n", I);
 
         if (I == 0) {
             puts("[WARNING] Interval was 0");
@@ -190,6 +209,59 @@ void trickle_interval_over(void)
         }
     }
 
+}
+
+//trail
+void tvo_delay_over(void){
+
+	while(1){
+		//	printf("(trickle.c tvo_delay) I'm here -> going to sleep ...\n");
+		thread_sleep();
+		//	printf("(trickle.c tvo_delay) ... woke up! \n");
+		if(tvo_auto_send == true){
+			//		printf("(trickle.c tvo_delay) going to send TVO \n");
+			rpl_dodag_t * mydodag = rpl_get_my_dodag();
+
+			struct rpl_tvo_t tvo;
+			rpl_tvo_init(&tvo);
+			send_TVO(&mydodag->my_preferred_parent->addr, &tvo);
+
+		//	tvo_time = timex_set(REGULAR_TVO_INTERVAL,0);
+			//vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
+
+			delay_tvo();
+		}
+		else{
+			delay_tvo();
+		}
+	}
+}
+
+//trail
+void set_tvo_auto_send(){
+	if(tvo_auto_send == true){
+		printf("(trickle.c) setting tvo_auto_send to false\n");
+		tvo_auto_send = false;
+		long_delay_tvo();
+	}else{
+		printf("(trickle.c) setting tvo_auto_send to true\n");
+		tvo_auto_send = true;
+		delay_tvo();
+	}
+}
+
+//trail
+void delay_tvo(void){
+	tvo_time = timex_set(REGULAR_TVO_INTERVAL,0);
+	vtimer_remove(&tvo_timer);
+	vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
+}
+
+//trail
+void long_delay_tvo(void){
+	tvo_time = timex_set(10000,0);
+	vtimer_remove(&tvo_timer);
+	vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
 }
 
 void delay_dao(void)
