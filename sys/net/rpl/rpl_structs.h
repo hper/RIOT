@@ -123,6 +123,50 @@
 #define RPL_GROUNDED_SHIFT 7
 #define RPL_DEFAULT_OCP 0
 
+
+#define ICMP_CODE_TVO				0x04 // trail code
+#define TVO_BASE_LEN                27 // trail tvo 26 + 48 byte signature
+#define REGULAR_TVO_INTERVAL 3 // trail TVO
+#define SRH_LIST_LENGTH 5 //trail: SRH for TVO
+
+//trail srh: obsolete
+typedef struct __attribute__ ((packed)) srh_list_t {
+    ipv6_addr_t addr;
+} srh_list_t;
+
+//trail signature
+typedef struct __attribute__ ((packed)) signature_t {
+    uint32_t uint32[12];
+} signature_t;
+
+//trail rpl_tvo
+struct __attribute__((packed)) rpl_tvo_t{
+    uint8_t rpl_instanceid;
+    uint8_t version_number;
+    uint16_t tvo_seq;
+    uint16_t rank;
+    uint32_t nonce;
+    ipv6_addr_t src_addr;
+//    uint32_t timestamp;
+    bool s_flag;
+    signature_t signature;
+
+    //uint8_t srh_list_size;
+    //srh_list_t srh_list[SRH_LENGTH];
+    //uint16_t rank_mcast;
+    //ipv6_addr_t src_addr;
+};
+
+//trail tvo-ack
+struct __attribute__((packed)) rpl_tvo_ack_t{
+    uint8_t rpl_instanceid;
+    uint8_t tvo_reserved;
+    uint8_t tvo_seq;
+ //   uint8_t status;
+};
+
+
+
 /* DIO Base Object (RFC 6550 Fig. 14) */
 struct __attribute__((packed)) rpl_dio_t {
     uint8_t rpl_instanceid;

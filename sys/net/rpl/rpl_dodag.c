@@ -228,7 +228,7 @@ rpl_parent_t *rpl_find_preferred_parent(void)
                 continue;
             }
             else if (best == NULL) {
-                printf("preferred parent chosen: (suffix)0x%x with rank: %d\n",  parents[i].addr.uint8[8], parents[i].rank);                
+          //      printf("preferred parent chosen: (suffix)0x%x with rank: %d\n",  parents[i].addr.uint8[8], parents[i].rank);
                 //puts("preferred parent found: ");
                 best = &parents[i];
             }

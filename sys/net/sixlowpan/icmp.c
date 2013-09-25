@@ -1305,6 +1305,7 @@ uint16_t icmpv6_csum(uint8_t proto)
     sum = len + proto;
 
     sum = csum(sum, (uint8_t *)&ipv6_buf->srcaddr, 2 * sizeof(ipv6_addr_t));
+  //  printf("** (icmp.c) icmpv6_sum: ipv6_buf->length = %u , len = %u , sum = %u ** \n",ipv6_buf->length, len, sum);
     sum = csum(sum, (uint8_t *)get_icmpv6_buf(0), len);
 
     return (sum == 0) ? 0xffff : HTONS(sum);

@@ -718,6 +718,7 @@ uint8_t sixlowpan_lowpan_register(int pid)
 void lowpan_read(uint8_t *data, uint8_t length, ieee_802154_long_t *s_laddr,
                  ieee_802154_long_t *d_laddr)
 {
+//	printf("(lowpan.c) temp debug lowpan_read\n");
     /* check if packet is fragmented */
     uint8_t hdr_length = 0;
     uint8_t datagram_offset = 0;
