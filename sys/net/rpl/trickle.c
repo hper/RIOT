@@ -24,8 +24,6 @@
 #include "trickle.h"
 #include "rpl/rpl.h"
 
-ipv6_addr_t my_address;
-
 //TODO in pointer umwandeln, speicher mit malloc holen
 char *timer_over_buf;
 char *interval_over_buf;
@@ -128,11 +126,6 @@ void init_trickle(void)
     										  PRIORITY_MAIN-1, CREATE_STACKTEST,
     										  tvo_delay_over, "tvo_delay_over");
 
-
-   ipv6_addr_t ll_address;
-    ipv6_addr_set_link_local_prefix(&ll_address);
-     ipv6_iface_get_best_src_addr(&my_address, &ll_address);
-
 }
 
 void start_trickle(uint8_t DIOIntMin, uint8_t DIOIntDoubl,
@@ -183,7 +176,7 @@ void trickle_interval_over(void)
     while (1) {
         thread_sleep();
         I = I * 2;
-        printf("[Node %u] setting new TRICKLE interval to %"PRIu32" ms\n", my_address.uint8[15] , I);
+        printf("Setting new TRICKLE interval to %"PRIu32" ms\n", I);
 
         if (I == 0) {
             puts("[WARNING] Interval was 0");

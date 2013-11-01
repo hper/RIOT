@@ -310,7 +310,7 @@ void send_DIO(ipv6_addr_t *destination)
 {
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("[Node %u] send DIO to %s (IPv6: ", my_address.uint8[15] ,ipv6_addr_to_str(addr_str, destination));
+	printf("Send DIO to %s (IPv6: " ,ipv6_addr_to_str(addr_str, destination));
 	//printf("\n\n %u %u %u %u %u %u %u %u\n\n", my_address.uint16[0], my_address.uint16[1], my_address.uint16[2], my_address.uint16[3],
 		//	my_address.uint16[4], my_address.uint16[5], my_address.uint16[6], my_address.uint16[7]);
 
@@ -394,7 +394,7 @@ void send_DAO(ipv6_addr_t *destination, uint8_t lifetime, bool default_lifetime,
     }
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("[Node %u] send DAO to %s (IPv6: ", my_address.uint8[15], ipv6_addr_to_str(addr_str, destination));
+    printf("Send DAO to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
 
 
     mutex_lock(&rpl_send_mutex);
@@ -489,7 +489,7 @@ void send_DAO_ACK(ipv6_addr_t *destination)
 {
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("[Node %u] send DAO-ACK to %s (IPv6: ", my_address.uint8[15], ipv6_addr_to_str(addr_str, destination));
+	printf("Send DAO-ACK to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
 
     #if ENABLE_DEBUG
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
@@ -528,7 +528,7 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 //	ipv6_addr_set_all_nodes_addr(destination);
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("[Node %u] send TVO to %s (IPv6: ", my_address.uint8[15], ipv6_addr_to_str(addr_str, destination));
+	printf("Send TVO to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
 
 	mutex_lock(&rpl_send_mutex);
 	rpl_dodag_t * mydodag;
@@ -719,7 +719,7 @@ void recv_rpl_tvo(void){
 	rpl_tvo_buf = get_rpl_tvo_buf();
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("[Node %u] received TVO from %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+	printf("Received TVO from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
 
 	 if (rpl_tvo_buf->s_flag) {
@@ -744,7 +744,7 @@ void recv_rpl_tvo(void){
 		if(rpl_equal_id(&rpl_tvo_buf->src_addr, &my_address)){
 
 		//am I the source?
-			printf("[Node %u] *TVO origin* checking signature ... ", my_address.uint8[15]);
+			printf("*TVO origin* checking signature ... ");
 
 			if(rpl_tvo_signature_buf->uint8[0] != 0){ //TODO any signture-dummy is OK
 			//if(1){
@@ -819,19 +819,19 @@ void recv_rpl_tvo(void){
 		//TVO is a request: on the way to the root
 		//am I tested? (rank == 0)
 		if(rpl_tvo_buf->rank == 0 && my_dodag != NULL && my_dodag->my_rank){
-			printf("[Node %u] included rank (%u) into TVO \n", my_address.uint8[15],  my_dodag->my_rank);
+			printf("Included rank (%u) into TVO \n", my_dodag->my_rank);
 			// tested: set to my rank
 			rpl_tvo_buf->rank = my_dodag->my_rank; //TODO memcpy
 		}
 		else if(my_dodag == NULL){
-			printf("[Node %u] not in network, yet - dropping TVO\n", my_address.uint8[15]);
+			printf("Not in network, yet - dropping TVO\n");
 			return;
 		}
 		else if(rpl_tvo_buf->rank <= my_dodag->my_rank) {
 			// not tested -> is rank OK?
 			// not OK -> DROP
 			//printf("(recv_rpl_tvo in rpl) RANK VIOLATION: received rank: %u - my rank: %u --> MSG IS DROPPED\n", rpl_tvo_buf->rank, my_dodag->my_rank);
-			printf("[Node %u] TVO contains invalid rank: %u\n", my_address.uint8[15], rpl_tvo_buf->rank);
+			printf("TVO contains invalid rank: %u\n", rpl_tvo_buf->rank);
 			return;
 		}
 		//rank OK, NOT tested -> continue
@@ -846,7 +846,7 @@ void recv_rpl_tvo(void){
 			//rpl_tvo_signature_buf = get_rpl_tvo_signature_buf(sizeof(rpl_tvo_signature_t));
 			rpl_tvo_signature_buf = get_tvo_signature_buf(TVO_BASE_LEN);
 			memset(rpl_tvo_signature_buf, 0, sizeof(*rpl_tvo_signature_buf));
-			printf("[Node %u] signing TVO ... ",  my_address.uint8[15]);
+			printf("Signing TVO ... ");
 			rpl_tvo_signature_buf->uint8[0] = 123;
 			printf("done\n");
 	//		printf("(TEST DEBUG) signature set by root: %u\n\n",rpl_tvo_signature_buf->uint8[0]);
@@ -873,7 +873,7 @@ void recv_rpl_dio(void)
 
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("[Node %u] received DIO with rank %u from %s (IPv6)\n", my_address.uint8[15], rpl_dio_buf->rank, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    printf("Received DIO with rank %u from %s (IPv6)\n", rpl_dio_buf->rank, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
 
     rpl_instance_t *dio_inst = rpl_get_instance(rpl_dio_buf->rpl_instanceid);
@@ -1028,7 +1028,6 @@ void recv_rpl_dio(void)
 
         		send_TVO(&mcast, &tvo, NULL);
         		//send_TVO(&ipv6_buf->srcaddr, &tvo, NULL);
-        		printf("TVO sent\n");
         		rpl_delete_instance(rpl_dio_buf->rpl_instanceid);
         		return;
         	}
@@ -1037,7 +1036,7 @@ void recv_rpl_dio(void)
             DEBUG("Will join DODAG: ");
 
             char addr_str[IPV6_MAX_ADDR_STR_LEN];
-            printf("[Node %u] joining network with DODAG ID: %s\n", my_address.uint8[15],ipv6_addr_to_str(addr_str, &dio_dodag.dodag_id));
+            printf("Joining network with DODAG ID: %s\n",ipv6_addr_to_str(addr_str, &dio_dodag.dodag_id));
 
             #if ENABLE_DEBUG
                 char addr_str[IPV6_MAX_ADDR_STR_LEN];        
@@ -1110,7 +1109,7 @@ void recv_rpl_dio(void)
     rpl_parent_update(parent);
 
     //char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("[Node %u] update parent (rank %u): %s (IPv6)\n", my_address.uint8[15], parent->rank, ipv6_addr_to_str(addr_str, &(parent->addr)));
+    printf("Update parent (rank %u): %s (IPv6)\n", parent->rank, ipv6_addr_to_str(addr_str, &(parent->addr)));
 
     if (rpl_equal_id(&parent->addr, &my_dodag->my_preferred_parent->addr) && (parent->dtsn != rpl_dio_buf->dtsn)) {
         delay_dao();
@@ -1200,7 +1199,7 @@ void recv_rpl_dao(void)
     ipv6_buf = get_rpl_ipv6_buf();
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("[Node %u] received DAO from %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    printf("Received DAO from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
     rpl_dao_buf = get_rpl_dao_buf();
     int len = DAO_BASE_LEN;
@@ -1280,7 +1279,7 @@ void recv_rpl_dao_ack(void)
     ipv6_buf = get_rpl_ipv6_buf();
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("[Node %u] received DAO-ACK from %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    printf("Received DAO-ACK from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
     if (my_dodag == NULL) {
         return;
@@ -1383,12 +1382,12 @@ void rpl_add_routing_entry(ipv6_addr_t *addr, ipv6_addr_t *next_hop, uint16_t li
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
 
     if (entry != NULL) {
-    	printf("[Node %u] update downward route to %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, addr));
+    	printf("Update downward route to %s (IPv6)\n", ipv6_addr_to_str(addr_str, addr));
         entry->lifetime = lifetime;
         return;
     }
 
-    printf("[Node %u] include downward route to %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, addr));
+    printf("Include downward route to %s (IPv6)\n", ipv6_addr_to_str(addr_str, addr));
 
     for (uint8_t i = 0; i < RPL_MAX_ROUTING_ENTRIES; i++) {
         if (!routing_table[i].used) {
