@@ -24,6 +24,8 @@
 #include "trickle.h"
 #include "rpl/rpl.h"
 
+ipv6_addr_t my_address;
+
 //TODO in pointer umwandeln, speicher mit malloc holen
 char *timer_over_buf;
 char *interval_over_buf;
@@ -126,6 +128,11 @@ void init_trickle(void)
     										  PRIORITY_MAIN-1, CREATE_STACKTEST,
     										  tvo_delay_over, "tvo_delay_over");
 
+
+   ipv6_addr_t ll_address;
+    ipv6_addr_set_link_local_prefix(&ll_address);
+     ipv6_iface_get_best_src_addr(&my_address, &ll_address);
+
 }
 
 void start_trickle(uint8_t DIOIntMin, uint8_t DIOIntDoubl,
@@ -176,7 +183,7 @@ void trickle_interval_over(void)
     while (1) {
         thread_sleep();
         I = I * 2;
-    //    printf("TRICKLE new Interval %"PRIu32"\n", I);
+        printf("[Node %u] setting new TRICKLE interval to %"PRIu32" ms\n", my_address.uint8[15] , I);
 
         if (I == 0) {
             puts("[WARNING] Interval was 0");
@@ -224,7 +231,7 @@ void tvo_delay_over(void){
 
 			struct rpl_tvo_t tvo;
 			rpl_tvo_init(&tvo);
-			send_TVO(&mydodag->my_preferred_parent->addr, &tvo);
+			send_TVO(&mydodag->my_preferred_parent->addr, &tvo, NULL);
 
 		//	tvo_time = timex_set(REGULAR_TVO_INTERVAL,0);
 			//vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
@@ -240,11 +247,11 @@ void tvo_delay_over(void){
 //trail
 void set_tvo_auto_send(){
 	if(tvo_auto_send == true){
-		printf("(trickle.c) setting tvo_auto_send to false\n");
+		printf("(trickle.c) setting tvo_auto_send to false (enable with 'a')\n");
 		tvo_auto_send = false;
 		long_delay_tvo();
 	}else{
-		printf("(trickle.c) setting tvo_auto_send to true\n");
+		printf("(trickle.c) setting tvo_auto_send to true (disable with 'a')\n");
 		tvo_auto_send = true;
 		delay_tvo();
 	}

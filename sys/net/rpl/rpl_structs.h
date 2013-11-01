@@ -38,7 +38,7 @@
 #define DIS_BASE_LEN                2
 #define DAO_BASE_LEN                4
 #define DAO_D_LEN                   24
-#define DAO_ACK_LEN                 4
+#define DAO_ACK_LEN                 4//32
 #define DAO_ACK_D_LEN               24
 #define RPL_OPT_LEN                 2
 #define RPL_OPT_DODAG_CONF_LEN      14
@@ -59,6 +59,8 @@
 #define RPL_OPT_PREFIX_INFO          8
 #define RPL_OPT_TARGET_DESC          9
 
+//#define RPL_TVP_SIGNATURE            10 //trail signature option type
+
 /* Counters */
 #define RPL_COUNTER_MAX                 255
 #define RPL_COUNTER_LOWER_REGION        127
@@ -74,7 +76,7 @@
 #define ROOT_NODE    1
 #define LEAF_NODE    2
 
-/* Link Metric Type */
+/* Link Metric Type */ipv6_addr_t dodagid;
 #define METRIC_ETX 1
 
 /*  Default values */
@@ -87,7 +89,7 @@
 #define INFINITE_RANK 0xFFFF
 #define RPL_DEFAULT_INSTANCE 0
 #define DEFAULT_PATH_CONTROL_SIZE 0
-#define DEFAULT_DIO_INTERVAL_MIN 11
+#define DEFAULT_DIO_INTERVAL_MIN 9
 /* standard value: */
 /* #define DEFAULT_DIO_INTERVAL_MIN 3 */
 #define DEFAULT_DIO_INTERVAL_DOUBLINGS 7
@@ -127,7 +129,6 @@
 #define ICMP_CODE_TVO				0x04 // trail code
 #define TVO_BASE_LEN                27 // trail tvo 26 + 48 byte signature
 #define REGULAR_TVO_INTERVAL 3 // trail TVO
-#define SRH_LIST_LENGTH 5 //trail: SRH for TVO
 
 //trail srh: obsolete
 typedef struct __attribute__ ((packed)) srh_list_t {
@@ -136,7 +137,7 @@ typedef struct __attribute__ ((packed)) srh_list_t {
 
 //trail signature
 typedef struct __attribute__ ((packed)) signature_t {
-    uint32_t uint32[12];
+    uint8_t uint8[12];
 } signature_t;
 
 //trail rpl_tvo
@@ -147,15 +148,16 @@ struct __attribute__((packed)) rpl_tvo_t{
     uint16_t rank;
     uint32_t nonce;
     ipv6_addr_t src_addr;
-//    uint32_t timestamp;
     bool s_flag;
-    signature_t signature;
-
-    //uint8_t srh_list_size;
-    //srh_list_t srh_list[SRH_LENGTH];
-    //uint16_t rank_mcast;
-    //ipv6_addr_t src_addr;
+  //  signature_t signature;
 };
+
+/* DODAG Configuration-Option (RFC 6550 Fig. 24) */
+typedef struct __attribute__((packed)) {
+    //uint8_t type;
+    //uint8_t length;
+	uint8_t uint8[1];
+} rpl_tvo_signature_t;
 
 //trail tvo-ack
 struct __attribute__((packed)) rpl_tvo_ack_t{
@@ -164,8 +166,6 @@ struct __attribute__((packed)) rpl_tvo_ack_t{
     uint8_t tvo_seq;
  //   uint8_t status;
 };
-
-
 
 /* DIO Base Object (RFC 6550 Fig. 14) */
 struct __attribute__((packed)) rpl_dio_t {

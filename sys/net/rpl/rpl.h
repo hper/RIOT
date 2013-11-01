@@ -38,7 +38,7 @@ void send_DIS(ipv6_addr_t *destination);
 void send_DAO(ipv6_addr_t *destination, uint8_t lifetime, bool default_lifetime, uint8_t start_index);
 void send_DAO_ACK(ipv6_addr_t *destination);
 
-void send_TVO(ipv6_addr_t *destination, struct rpl_tvo_t * tvo); //trail
+void send_TVO(ipv6_addr_t *destination, struct rpl_tvo_t * tvo,  rpl_tvo_signature_t * signature); //trail
 void recv_rpl_tvo(void); //trail
 void enable_tvo_auto_send(void); //trail
 void rpl_tvo_sign_data(void); //trail

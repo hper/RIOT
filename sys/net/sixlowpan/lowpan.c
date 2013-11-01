@@ -156,11 +156,12 @@ void sixlowpan_lowpan_sendto(const ieee_802154_long_t *dest,
 
     memcpy(&laddr.uint8[0], &dest->uint8[0], 8);
 
+//    printf("(TEST DEBUG) destination address: %x%x%x%x %x%x%x%x \n", laddr.uint8[0],laddr.uint8[1],laddr.uint8[2],
+//    		laddr.uint8[3], laddr.uint8[4], laddr.uint8[5], laddr.uint8[6], laddr.uint8[7]);
     if (ipv6_addr_is_multicast(&ipv6_buf->destaddr)) {
         /* send broadcast */
         mcast = 1;
     }
-
     if (iphc_status == LOWPAN_IPHC_ENABLE) {
         lowpan_iphc_encoding(&laddr, ipv6_buf, data);
         data = &comp_buf[0];
@@ -169,6 +170,8 @@ void sixlowpan_lowpan_sendto(const ieee_802154_long_t *dest,
     else {
         lowpan_ipv6_set_dispatch(data);
     }
+
+ //   printf("(TEST DEBUG) 4: packet_length=%u / header_size=%u / PAYLOAD_SIZE=%u / IEEE_MAX=%u\n",packet_length, header_size, PAYLOAD_SIZE, IEEE_802154_MAX_HDR_LEN);
 
     /* check if packet needs to be fragmented */
     if (packet_length + header_size > PAYLOAD_SIZE - IEEE_802154_MAX_HDR_LEN) {
@@ -180,12 +183,10 @@ void sixlowpan_lowpan_sendto(const ieee_802154_long_t *dest,
         max_frag_initial = ((max_frame - 4 - header_size) / 8) * 8;
 
         memcpy(fragbuf + 4, data, max_frag_initial);
-
         fragbuf[0] = ((SIXLOWPAN_FRAG1_DISPATCH << 8) | packet_length) >> 8;
         fragbuf[1] = (SIXLOWPAN_FRAG1_DISPATCH << 8) | packet_length;
         fragbuf[2] = tag >> 8;
         fragbuf[3] = tag;
-
         sixlowpan_mac_send_ieee802154_frame(&laddr,
                                             (uint8_t *)&fragbuf,
                                             max_frag_initial + header_size + 4,
@@ -199,7 +200,6 @@ void sixlowpan_lowpan_sendto(const ieee_802154_long_t *dest,
         while (packet_length - position > max_frame - 5) {
             memset(&fragbuf, 0, packet_length + header_size);
             memcpy(fragbuf + 5, data, max_frag);
-
             fragbuf[0] = ((SIXLOWPAN_FRAGN_DISPATCH << 8) | packet_length) >> 8;
             fragbuf[1] = (SIXLOWPAN_FRAGN_DISPATCH << 8) | packet_length;
             fragbuf[2] = tag >> 8;

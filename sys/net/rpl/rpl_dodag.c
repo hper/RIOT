@@ -26,6 +26,8 @@ rpl_instance_t instances[RPL_MAX_INSTANCES];
 rpl_dodag_t dodags[RPL_MAX_DODAGS];
 rpl_parent_t parents[RPL_MAX_PARENTS];
 
+ipv6_addr_t my_address;
+
 rpl_instance_t *rpl_new_instance(uint8_t instanceid)
 {
     rpl_instance_t *inst;
@@ -51,6 +53,18 @@ rpl_instance_t *rpl_get_instance(uint8_t instanceid)
     }
 
     return NULL;
+}
+
+//TRAIL -> clean up
+void rpl_delete_instance(uint8_t instanceid)
+{
+    for (int i = 0; i < RPL_MAX_INSTANCES; i++) {
+        if (instances[i].used && (instances[i].id == instanceid)) {
+            instances[i].used = 0;
+            instances[i].id = 0;
+            instances[i].joined = 0;
+        }
+    }
 }
 
 rpl_instance_t *rpl_get_my_instance()
@@ -324,6 +338,13 @@ void rpl_join_dodag(rpl_dodag_t *dodag, ipv6_addr_t *parent, uint16_t parent_ran
 
     start_trickle(my_dodag->dio_min, my_dodag->dio_interval_doubling, my_dodag->dio_redundancy);
     delay_dao();
+
+   ipv6_addr_t ll_address;
+   ipv6_addr_set_link_local_prefix(&ll_address);
+   ipv6_iface_get_best_src_addr(&my_address, &ll_address);
+
+    printf("[Node %u] calculated rank to %u (based on parent's rank %u)\n", my_address.uint8[15] , my_dodag->my_rank, parent_rank);
+    //printf("done (rank: %u)\n", my_dodag->my_rank);
 }
 
 void rpl_global_repair(rpl_dodag_t *dodag, ipv6_addr_t *p_addr, uint16_t rank)

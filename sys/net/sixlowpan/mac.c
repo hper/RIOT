@@ -244,7 +244,6 @@ void sixlowpan_mac_send_ieee802154_frame(const ieee_802154_long_t *addr,
    // vtimer_now(&now); //trail
    // uint32_t ts2 = now.microseconds; //trail
 
-    // printf("**sent %u bytes in %u us\n",frame.payload_len,(vtimer_now().microseconds-ts));
   //   printf("\n**sent %u bytes in %u us - mesg content value %u, p.length: %u \n",frame.payload_len,(ts2-ts1),&mesg.content.value, p.length);
 
 

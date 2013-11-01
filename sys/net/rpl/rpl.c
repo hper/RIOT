@@ -45,6 +45,8 @@ uint16_t global_tvo_down_counter = 1;
 uint32_t global_timestamp_tvo_process = 0;
 uint32_t global_timestamp_last_DIO = 0;
 
+uint8_t tvo_pending = 1;
+
 
 char rpl_process_buf[RPL_PROCESS_STACKSIZE];
 /* global variables */
@@ -84,6 +86,8 @@ static struct rpl_dao_t *rpl_dao_buf;
 static struct rpl_dao_ack_t *rpl_dao_ack_buf;
 
 static struct rpl_tvo_t *rpl_tvo_buf; // trail tvo buffer
+static rpl_tvo_signature_t *rpl_send_tvo_signature_buf; // trail tvo buffer
+static rpl_tvo_signature_t *rpl_tvo_signature_buf; // trail tvo buffer
 
 static rpl_opt_t *rpl_opt_buf;
 static rpl_opt_dodag_conf_t *rpl_opt_dodag_conf_buf;
@@ -127,6 +131,12 @@ static struct rpl_tvo_t* get_rpl_send_tvo_buf(){
 	return ((struct rpl_tvo_t*)&(rpl_send_buffer[IPV6_HDR_LEN + ICMPV6_HDR_LEN]));
 }
 
+//trail get send tvo signature buffer
+static rpl_tvo_signature_t *get_rpl_send_tvo_signature_buf(uint8_t rpl_msg_len)
+{
+    return ((rpl_tvo_signature_t *) &(rpl_send_buffer[IPV6_HDR_LEN + ICMPV6_HDR_LEN + rpl_msg_len]));
+}
+
 static rpl_opt_dodag_conf_t *get_rpl_send_opt_dodag_conf_buf(uint8_t rpl_msg_len)
 {
     return ((rpl_opt_dodag_conf_t *) &(rpl_send_buffer[IPV6_HDR_LEN + ICMPV6_HDR_LEN + rpl_msg_len]));
@@ -167,6 +177,11 @@ static struct rpl_dis_t *get_rpl_dis_buf(void) {
 //trail get tvo buf
 static struct rpl_tvo_t* get_rpl_tvo_buf(){
 	return ((struct rpl_tvo_t*)&(rpl_buffer[IPV6_HDR_LEN + ICMPV6_HDR_LEN]));
+}
+//trail get tvo signature buf
+static rpl_tvo_signature_t *get_tvo_signature_buf(uint8_t rpl_msg_len)
+{
+    return ((rpl_tvo_signature_t *) &(rpl_buffer[IPV6_HDR_LEN + ICMPV6_HDR_LEN + rpl_msg_len]));
 }
 
 static rpl_opt_t *get_rpl_opt_buf(uint8_t rpl_msg_len)
@@ -294,7 +309,10 @@ void rpl_init_root(void)
 void send_DIO(ipv6_addr_t *destination)
 {
 
-	printf("***** send DIO *****\n");
+	char addr_str[IPV6_MAX_ADDR_STR_LEN];
+	printf("[Node %u] send DIO to %s (IPv6: ", my_address.uint8[15] ,ipv6_addr_to_str(addr_str, destination));
+	//printf("\n\n %u %u %u %u %u %u %u %u\n\n", my_address.uint16[0], my_address.uint16[1], my_address.uint16[2], my_address.uint16[3],
+		//	my_address.uint16[4], my_address.uint16[5], my_address.uint16[6], my_address.uint16[7]);
 
     mutex_lock(&rpl_send_mutex);
     rpl_dodag_t *mydodag;
@@ -371,11 +389,13 @@ void send_DIS(ipv6_addr_t *destination)
 void send_DAO(ipv6_addr_t *destination, uint8_t lifetime, bool default_lifetime, uint8_t start_index)
 {
 
-	printf("***** send DAO *****\n");
-
     if (i_am_root) {
         return;
     }
+
+    char addr_str[IPV6_MAX_ADDR_STR_LEN];
+    printf("[Node %u] send DAO to %s (IPv6: ", my_address.uint8[15], ipv6_addr_to_str(addr_str, destination));
+
 
     mutex_lock(&rpl_send_mutex);
     rpl_dodag_t *my_dodag;
@@ -468,7 +488,8 @@ void send_DAO(ipv6_addr_t *destination, uint8_t lifetime, bool default_lifetime,
 void send_DAO_ACK(ipv6_addr_t *destination)
 {
 
-	printf("***** send DAO-ACK *****\n");
+	char addr_str[IPV6_MAX_ADDR_STR_LEN];
+	printf("[Node %u] send DAO-ACK to %s (IPv6: ", my_address.uint8[15], ipv6_addr_to_str(addr_str, destination));
 
     #if ENABLE_DEBUG
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
@@ -494,30 +515,38 @@ void send_DAO_ACK(ipv6_addr_t *destination)
     rpl_send_dao_ack_buf->dao_sequence = my_dodag->dao_seq;
     rpl_send_dao_ack_buf->status = 0;
 
-    uint16_t plen = ICMPV6_HDR_LEN + DIS_BASE_LEN;
+    uint16_t plen = ICMPV6_HDR_LEN + DAO_ACK_LEN;
     rpl_send(destination, (uint8_t *)icmp_send_buf, plen, IPV6_PROTO_NUM_ICMPV6, NULL);
     mutex_unlock(&rpl_send_mutex);
 }
 
 //trail send tvo
-void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo){
+void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signature_t * signature){
 
-	printf("***** send TVO *****\n");
+//	ipv6_addr_t mcast;
+//	ipv6_addr_set_all_nodes_addr(&mcast);
+//	ipv6_addr_set_all_nodes_addr(destination);
+
+	char addr_str[IPV6_MAX_ADDR_STR_LEN];
+	printf("[Node %u] send TVO to %s (IPv6: ", my_address.uint8[15], ipv6_addr_to_str(addr_str, destination));
 
 	mutex_lock(&rpl_send_mutex);
 	rpl_dodag_t * mydodag;
-//	icmp_send_buf = get_rpl_send_icmpv6_buf(ipv6_ext_hdr_len);
+
+	icmp_send_buf = get_rpl_send_icmpv6_buf(ipv6_ext_hdr_len);
 
 	mydodag = rpl_get_my_dodag();
+
+	/*
 	if(mydodag == NULL){
 		printf("Error, trying to send TVO without being part of a dodag. This should not happen\n");
 		mutex_unlock(&rpl_send_mutex);
 		return;
 	}
-
+	*/
 	//get size of signature
-	int size = (sizeof(tvo->signature.uint32)) ; //devided by 4: 32 bit, 4 byte
-	size = size / 4;
+	//int size = (sizeof(tvo->signature.uint32)) ; //devided by 4: 32 bit, 4 byte
+	//size = size / 4;
 
 	icmp_send_buf->type = ICMPV6_TYPE_RPL_CONTROL;
 	icmp_send_buf->code = ICMP_CODE_TVO;
@@ -527,34 +556,30 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo){
 	memset(rpl_send_tvo_buf, 0, sizeof(*rpl_send_tvo_buf));
 	memcpy(rpl_send_tvo_buf, tvo, sizeof(*tvo));
 
-	int size_signature;
-	if(rpl_send_tvo_buf->s_flag){
-		size_signature = sizeof(rpl_send_tvo_buf->signature.uint32);
-	}
-	else{
-		size_signature = 0;
+	// calculate the base length of the tvo
+	uint16_t tvo_base_length = sizeof(*tvo);
+//	printf("(TEST DEBUG) ***** base length calculated: %u / counted %u\n\n",tvo_base_length, TVO_BASE_LEN);
+
+
+	uint8_t size_signature = 0;
+
+	if(signature != NULL && rpl_send_tvo_buf->s_flag){
+		size_signature = sizeof(rpl_tvo_signature_t);// + RPL_OPT_LEN;
+		rpl_send_tvo_signature_buf = get_rpl_send_tvo_signature_buf(TVO_BASE_LEN);
+		memcpy(rpl_send_tvo_signature_buf, signature, size_signature);
+//		printf("(TEST DEBUG) send TVO: signature=%u / rpl_send_tvo_signature_buf=%u / size=%u\n\n",signature->uint8[0], rpl_send_tvo_signature_buf->uint8[0], size_signature);
 	}
 
 	timex_t now;
 	vtimer_now(&now);
 	uint32_t timestamp = now.microseconds;
 
-	uint16_t plen = ICMPV6_HDR_LEN + size_signature + TVO_BASE_LEN;// + (rpl_send_tvo_buf->srh_list_size * sizeof(srh_list_t));
-	printf("%u %u %u\n",timestamp, rpl_send_tvo_buf->tvo_seq, plen);
+	uint16_t plen = ICMPV6_HDR_LEN + size_signature + tvo_base_length;// + (rpl_send_tvo_buf->srh_list_size * sizeof(srh_list_t));
+//	printf("\n(TEST DEBUG) %u = %u + %u + %u\n\n",plen, ICMPV6_HDR_LEN, size_signature, tvo_base_length);
+//	printf("%u %u %u\n",timestamp, rpl_send_tvo_buf->tvo_seq, plen);
 	rpl_send(destination,(uint8_t*)icmp_send_buf, plen, IPV6_PROTO_NUM_ICMPV6, NULL);
 
 	mutex_unlock(&rpl_send_mutex);
-}
-
-// trail sign data
-void rpl_tvo_sign_data(){
-	//TODO replace dummy by function
-	int size = sizeof((rpl_tvo_buf->signature.uint32));
-	size = size / 4;
-	for(int i=0;i<size;i++){
-		rpl_tvo_buf->signature.uint32[i] = i;
-	}
-	//rpl_tvo_buf->signature = 1000 + rpl_tvo_buf->rank;
 }
 
 //trail tvo init
@@ -573,11 +598,13 @@ struct rpl_tvo_t * rpl_tvo_init(struct rpl_tvo_t * tvo){
 	tvo->rank = 0;
 	tvo->rpl_instanceid = my_dodag->instance->id;
 
-	int size = sizeof((tvo->signature.uint32) );
-	size = size / 4;
+/*	int size = sizeof((tvo->signature.uint8) );
+//	size = size / 4;
 	for(int i=0;i<size;i++){
-		tvo->signature.uint32[i] = 0;
+		tvo->signature.uint8[i] = 0;
 	}
+*/
+
 	//printf("(rpl_tvo_init) signature at %u is %u", size, tvo->signature.uint32[size-1]);
 	//tvo->timestamp = vtimer_now().microseconds;
 
@@ -592,6 +619,29 @@ struct rpl_tvo_t * rpl_tvo_init(struct rpl_tvo_t * tvo){
 	return &tvo;
 }
 
+//trail tvo init
+struct rpl_tvo_t * rpl_tvo_init_2(struct rpl_tvo_t * tvo, uint8_t instance, uint8_t version_number){
+
+	ipv6_addr_t ll_address;
+	ipv6_addr_t my_address;
+	ipv6_addr_set_link_local_prefix(&ll_address);
+	ipv6_iface_get_best_src_addr(&my_address, &ll_address);
+
+    timex_t now;
+    vtimer_now(&now);
+	tvo->nonce = now.microseconds;
+
+	tvo->rank = 0;
+	tvo->rpl_instanceid = instance;
+
+	tvo->s_flag = 0;
+	tvo->src_addr = my_address;
+	tvo->tvo_seq = global_tvo_counter;
+	global_tvo_counter++;
+	tvo->version_number = version_number;
+	return &tvo;
+}
+
 // trail auto send
 void enable_tvo_auto_send(void){
 	set_tvo_auto_send();
@@ -603,135 +653,6 @@ void enable_tvo_auto_send(void){
 }
 
 // trail receive tvo
-void recv_rpl_tvo(void){
-
-	printf("***** receive TVO *****\n");
-
-	ipv6_addr_t ll_address;
-	ipv6_addr_t my_address;
-	ipv6_addr_set_link_local_prefix(&ll_address);
-	ipv6_iface_get_best_src_addr(&my_address, &ll_address);
-
-	uint32_t timestamp;// = vtimer_now().microseconds;
-	ipv6_addr_t * next_hop;
-	ipv6_buf = get_rpl_ipv6_buf();
-	rpl_tvo_buf = get_rpl_tvo_buf();
-
-	//get size of signature
-	int size = (sizeof(rpl_tvo_buf->signature.uint32)) ; //devided by 4: 32 bit, 4 byte
-	size = size / 4;
-
-	if(!rpl_tvo_buf->s_flag){
-		rpl_tvo_buf->signature.uint32[size-1] = 666;
-	}
-
-	rpl_dodag_t *my_dodag = rpl_get_my_dodag();
-	if(my_dodag == NULL){
-		return;
-	}
-
-	// check instance
-	rpl_instance_t * my_inst = rpl_get_my_instance();
-	rpl_instance_t * tvo_inst = rpl_get_instance(rpl_tvo_buf->rpl_instanceid);
-	if(tvo_inst->id != my_inst->id){
-		printf("(recv_rpl_tvo in rpl) wrong instance! Received: %u, but I am in %u\n",tvo_inst->id,my_inst->id);
-		return;
-	}
-
-	if(rpl_tvo_buf->s_flag){ //response
-		if(rpl_equal_id(&rpl_tvo_buf->src_addr, &my_address)){
-		//am I the source?
-			if(rpl_tvo_buf->signature.uint32[size-1] != 0){ //TODO any signture-dummy is OK
-			    timex_t now;
-			    vtimer_now(&now);
-				timestamp = now.microseconds;
-
-				uint16_t tvo_counter_difference = rpl_tvo_buf->tvo_seq - global_success_tvo_counter;
-				while(global_success_tvo_counter < rpl_tvo_buf->tvo_seq){
-					global_loss_tvo_counter++;
-					printf("%u 0 0 %u yyy 1 0 0 \n",global_success_tvo_counter, global_loss_tvo_counter);
-					global_success_tvo_counter++;
-				}
-				//printf("%u %u %u ",rpl_tvo_buf->tvo_seq, ts_diff,global_loss_tvo_counter);
-				printf("%u %u %u %u yyy 1 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce ,global_loss_tvo_counter);
-				global_success_tvo_counter++;
-				return;
-			}
-			else{
-				printf("\n TVO did not contain signature!\n");
-				return;
-			}
-		}
-		else{
-			/*
-			 * COUNTER Received tvo on way back
-			 * TVO_seq travel_time msg_loss
-			 */
-			  timex_t now;
-              vtimer_now(&now);
-              timestamp = now.microseconds;
-
-			uint16_t tvo_counter_difference = rpl_tvo_buf->tvo_seq - global_tvo_down_counter;
-			while(global_tvo_down_counter < rpl_tvo_buf->tvo_seq){
-				printf("%u 0 0 %u xxx 1 0 0 \n",global_tvo_down_counter, global_loss_down_tvo_counter);
-				global_loss_down_tvo_counter++;
-				global_tvo_down_counter++;
-			}
-	        printf("%u %u %u %u xxx 1 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce,global_loss_down_tvo_counter);
-			global_tvo_down_counter++;
-			next_hop = rpl_get_next_hop(&rpl_tvo_buf->src_addr);
-		}
-	}
-	else{
-		/*
-		 * counter received tvo on way to root
-		 */
-		  timex_t now;
-          vtimer_now(&now);
-          timestamp = now.microseconds;
-
-
-		uint16_t tvo_counter_difference = rpl_tvo_buf->tvo_seq - global_tvo_up_counter;
-		while(global_tvo_up_counter < rpl_tvo_buf->tvo_seq){
-			global_loss_up_tvo_counter++;
-			printf("%u 0 0 %u xxx 0 0 0\n",global_tvo_up_counter, global_loss_up_tvo_counter);
-			global_tvo_up_counter++;
-		}
-		printf("%u %u %u %u xxx 0 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce, global_loss_up_tvo_counter);
-		global_tvo_up_counter++;
-
-		//add downward routing entry to send TVO back
-		rpl_add_routing_entry(&rpl_tvo_buf->src_addr, &ipv6_buf->srcaddr, 1000);
-		rpl_add_routing_entry(&ipv6_buf->srcaddr, &ipv6_buf->srcaddr, 1000);
-
-		//TVO is a request: on the way to the root
-		//am I tested? (rank == 0)
-		if(rpl_tvo_buf->rank == 0){
-			// tested: set to my rank
-			rpl_tvo_buf->rank = my_dodag->my_rank; //TODO memcpy
-		}
-		else if(rpl_tvo_buf->rank <= my_dodag->my_rank) {
-			// not tested -> is rank OK?
-			// not OK -> DROP
-			printf("(recv_rpl_tvo in rpl) RANK VIOLATION: received rank: %u - my rank: %u --> MSG IS DROPPED\n", rpl_tvo_buf->rank, my_dodag->my_rank);
-			return;
-		}
-		//rank OK, NOT tested -> continue
-		// am I root?
-		if(i_am_root){
-			rpl_tvo_buf->signature.uint32[size-1] = 1230321; //TODO function
-			rpl_tvo_buf->s_flag = 1;
-			next_hop = rpl_get_next_hop(&rpl_tvo_buf->src_addr);
-		}
-		else{
-			//not root: forward to preferred parent
-			next_hop = &my_dodag->my_preferred_parent->addr;
-		}
-	}
-	send_TVO(next_hop, rpl_tvo_buf);
-}
-
-
 void rpl_process(void)
 {
 
@@ -785,13 +706,175 @@ void rpl_process(void)
 }
 
 
+void recv_rpl_tvo(void){
+
+	ipv6_addr_t ll_address;
+	ipv6_addr_t my_address;
+	ipv6_addr_set_link_local_prefix(&ll_address);
+	ipv6_iface_get_best_src_addr(&my_address, &ll_address);
+
+	uint32_t timestamp;// = vtimer_now().microseconds;
+	ipv6_addr_t * next_hop;
+	ipv6_buf = get_rpl_ipv6_buf();
+	rpl_tvo_buf = get_rpl_tvo_buf();
+
+	char addr_str[IPV6_MAX_ADDR_STR_LEN];
+	printf("[Node %u] received TVO from %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+
+
+	 if (rpl_tvo_buf->s_flag) {
+	        rpl_opt_buf = get_rpl_opt_buf(TVO_BASE_LEN);
+	        rpl_tvo_signature_buf = get_tvo_signature_buf(TVO_BASE_LEN);
+	      //  printf("\n\n (TEST DEBUG) received tvo signature: %u\n\n",rpl_tvo_signature_buf->uint8[0]);
+	 }
+
+
+	rpl_dodag_t *my_dodag = rpl_get_my_dodag();
+	if(my_dodag == NULL){
+	}
+
+	// check instance
+	rpl_instance_t * my_inst = rpl_get_my_instance();
+	rpl_instance_t * tvo_inst = rpl_get_instance(rpl_tvo_buf->rpl_instanceid);
+	if(tvo_inst->id != my_inst->id){
+	//	return;
+	}
+
+	if(rpl_tvo_buf->s_flag){ //response
+		if(rpl_equal_id(&rpl_tvo_buf->src_addr, &my_address)){
+
+		//am I the source?
+			printf("[Node %u] *TVO origin* checking signature ... ", my_address.uint8[15]);
+
+			if(rpl_tvo_signature_buf->uint8[0] != 0){ //TODO any signture-dummy is OK
+			//if(1){
+			    timex_t now;
+			    vtimer_now(&now);
+				timestamp = now.microseconds;
+
+				uint16_t tvo_counter_difference = rpl_tvo_buf->tvo_seq - global_success_tvo_counter;
+				while(global_success_tvo_counter < rpl_tvo_buf->tvo_seq){
+					global_loss_tvo_counter++;
+			//		printf("%u 0 0 %u yyy 1 0 0 \n",global_success_tvo_counter, global_loss_tvo_counter);
+					global_success_tvo_counter++;
+				}
+				//printf("%u %u %u ",rpl_tvo_buf->tvo_seq, ts_diff,global_loss_tvo_counter);
+			//	printf("%u %u %u %u yyy 1 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce ,global_loss_tvo_counter);
+				global_success_tvo_counter++;
+
+				printf("**valid**\n");
+
+				tvo_pending = 0;
+
+				return;
+			}
+			else{
+				//printf("\n TVO did not contain signature!\n");
+				printf(" **invalid**\n");
+				return;
+			}
+		}
+		else{
+			/*
+			 * COUNTER Received tvo on way back
+			 * TVO_seq travel_time msg_loss
+			 */
+			  timex_t now;
+              vtimer_now(&now);
+              timestamp = now.microseconds;
+
+			uint16_t tvo_counter_difference = rpl_tvo_buf->tvo_seq - global_tvo_down_counter;
+			while(global_tvo_down_counter < rpl_tvo_buf->tvo_seq){
+		//		printf("%u 0 0 %u xxx 1 0 0 \n",global_tvo_down_counter, global_loss_down_tvo_counter);
+				global_loss_down_tvo_counter++;
+				global_tvo_down_counter++;
+			}
+	   //     printf("%u %u %u %u xxx 1 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce,global_loss_down_tvo_counter);
+			global_tvo_down_counter++;
+			next_hop = rpl_get_next_hop(&rpl_tvo_buf->src_addr);
+		}
+	}
+	else{
+		/*
+		 * counter received tvo on way to root
+		 */
+		  timex_t now;
+          vtimer_now(&now);
+          timestamp = now.microseconds;
+
+
+		uint16_t tvo_counter_difference = rpl_tvo_buf->tvo_seq - global_tvo_up_counter;
+		while(global_tvo_up_counter < rpl_tvo_buf->tvo_seq){
+			global_loss_up_tvo_counter++;
+		//	printf("%u 0 0 %u xxx 0 0 0\n",global_tvo_up_counter, global_loss_up_tvo_counter);
+			global_tvo_up_counter++;
+		}
+	//	printf("%u %u %u %u xxx 0 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce, global_loss_up_tvo_counter);
+		global_tvo_up_counter++;
+
+		//add downward routing entry to send TVO back
+		rpl_add_routing_entry(&rpl_tvo_buf->src_addr, &ipv6_buf->srcaddr, 1000);
+		rpl_add_routing_entry(&ipv6_buf->srcaddr, &ipv6_buf->srcaddr, 1000);
+
+		//TVO is a request: on the way to the root
+		//am I tested? (rank == 0)
+		if(rpl_tvo_buf->rank == 0 && my_dodag != NULL && my_dodag->my_rank){
+			printf("[Node %u] included rank (%u) into TVO \n", my_address.uint8[15],  my_dodag->my_rank);
+			// tested: set to my rank
+			rpl_tvo_buf->rank = my_dodag->my_rank; //TODO memcpy
+		}
+		else if(my_dodag == NULL){
+			printf("[Node %u] not in network, yet - dropping TVO\n", my_address.uint8[15]);
+			return;
+		}
+		else if(rpl_tvo_buf->rank <= my_dodag->my_rank) {
+			// not tested -> is rank OK?
+			// not OK -> DROP
+			//printf("(recv_rpl_tvo in rpl) RANK VIOLATION: received rank: %u - my rank: %u --> MSG IS DROPPED\n", rpl_tvo_buf->rank, my_dodag->my_rank);
+			printf("[Node %u] TVO contains invalid rank: %u\n", my_address.uint8[15], rpl_tvo_buf->rank);
+			return;
+		}
+		//rank OK, NOT tested -> continue
+		// am I root?
+		if(i_am_root){
+
+			//rpl_tvo_buf->signature.uint8[size-1] = 123; //TODO function
+			//printf("\n(TEST DEBUG) signature at %u: %u\n\n",size-1, rpl_tvo_buf->signature.uint8[size-1]);
+
+			//rpl_tvo_signature_t signature;
+			//signature->uint8[0] = 123;
+			//rpl_tvo_signature_buf = get_rpl_tvo_signature_buf(sizeof(rpl_tvo_signature_t));
+			rpl_tvo_signature_buf = get_tvo_signature_buf(TVO_BASE_LEN);
+			memset(rpl_tvo_signature_buf, 0, sizeof(*rpl_tvo_signature_buf));
+			printf("[Node %u] signing TVO ... ",  my_address.uint8[15]);
+			rpl_tvo_signature_buf->uint8[0] = 123;
+			printf("done\n");
+	//		printf("(TEST DEBUG) signature set by root: %u\n\n",rpl_tvo_signature_buf->uint8[0]);
+
+
+			rpl_tvo_buf->s_flag = 1;
+			next_hop = rpl_get_next_hop(&rpl_tvo_buf->src_addr);
+		}
+		else{
+			//not root: forward to preferred parent
+			next_hop = &my_dodag->my_preferred_parent->addr;
+		}
+	}
+	send_TVO(next_hop, rpl_tvo_buf, rpl_tvo_signature_buf);
+}
+
+
+
 void recv_rpl_dio(void)
 {
-	printf("***** receive DIO *****\n");
     ipv6_buf = get_rpl_ipv6_buf();
-
     rpl_dio_buf = get_rpl_dio_buf();
     int len = DIO_BASE_LEN;
+
+
+    char addr_str[IPV6_MAX_ADDR_STR_LEN];
+    printf("[Node %u] received DIO with rank %u from %s (IPv6)\n", my_address.uint8[15], rpl_dio_buf->rank, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+
 
     rpl_instance_t *dio_inst = rpl_get_instance(rpl_dio_buf->rpl_instanceid);
     rpl_instance_t *my_inst = rpl_get_my_instance();
@@ -924,8 +1007,38 @@ void recv_rpl_dio(void)
         }
 
         if (rpl_dio_buf->rank != INFINITE_RANK) {
+
+        	// set global bool to "pending"
+        	// if pending == true
+        	// 	-> unlock & exit
+        	// else
+        	// -> send TVO
+        	// -> unlock
+        	// -> exit
+        	// // In TVO if OK -> pending = false / not OK pending = false
+        	if(tvo_pending){
+        		printf("Parent's rank %u unverified .. initializing TRAIL\n", rpl_dio_buf->rank);
+        		struct rpl_tvo_t tvo;
+        		printf("TVO created\n");
+        		rpl_tvo_init_2(&tvo, rpl_dio_buf->rpl_instanceid, rpl_dio_buf->version_number);
+        		printf("TVO initialized\n");
+
+        		ipv6_addr_t mcast;
+        		ipv6_addr_set_all_nodes_addr(&mcast);
+
+        		send_TVO(&mcast, &tvo, NULL);
+        		//send_TVO(&ipv6_buf->srcaddr, &tvo, NULL);
+        		printf("TVO sent\n");
+        		rpl_delete_instance(rpl_dio_buf->rpl_instanceid);
+        		return;
+        	}
+
+
             DEBUG("Will join DODAG: ");
-            printf("**** JOINED ****\n");
+
+            char addr_str[IPV6_MAX_ADDR_STR_LEN];
+            printf("[Node %u] joining network with DODAG ID: %s\n", my_address.uint8[15],ipv6_addr_to_str(addr_str, &dio_dodag.dodag_id));
+
             #if ENABLE_DEBUG
                 char addr_str[IPV6_MAX_ADDR_STR_LEN];        
                 printf("%s\n", ipv6_addr_to_str(addr_str, &dio_dodag.dodag_id));
@@ -995,6 +1108,9 @@ void recv_rpl_dio(void)
     /* update parent rank */
     parent->rank = rpl_dio_buf->rank;
     rpl_parent_update(parent);
+
+    //char addr_str[IPV6_MAX_ADDR_STR_LEN];
+    printf("[Node %u] update parent (rank %u): %s (IPv6)\n", my_address.uint8[15], parent->rank, ipv6_addr_to_str(addr_str, &(parent->addr)));
 
     if (rpl_equal_id(&parent->addr, &my_dodag->my_preferred_parent->addr) && (parent->dtsn != rpl_dio_buf->dtsn)) {
         delay_dao();
@@ -1074,7 +1190,6 @@ void recv_rpl_dis(void)
 
 void recv_rpl_dao(void)
 {
-	printf("***** receive DAO *****\n");
     rpl_dodag_t *my_dodag = rpl_get_my_dodag();
 
     if (my_dodag == NULL) {
@@ -1083,6 +1198,10 @@ void recv_rpl_dao(void)
     }
 
     ipv6_buf = get_rpl_ipv6_buf();
+
+    char addr_str[IPV6_MAX_ADDR_STR_LEN];
+    printf("[Node %u] received DAO from %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+
     rpl_dao_buf = get_rpl_dao_buf();
     int len = DAO_BASE_LEN;
     uint8_t increment_seq = 0;
@@ -1156,8 +1275,12 @@ void recv_rpl_dao(void)
 void recv_rpl_dao_ack(void)
 {
 
-	printf("***** receive DAO-ACK *****\n");
     rpl_dodag_t *my_dodag = rpl_get_my_dodag();
+
+    ipv6_buf = get_rpl_ipv6_buf();
+
+    char addr_str[IPV6_MAX_ADDR_STR_LEN];
+    printf("[Node %u] received DAO-ACK from %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
     if (my_dodag == NULL) {
         return;
@@ -1180,6 +1303,9 @@ void recv_rpl_dao_ack(void)
 /* TODO: tcp_socket unused? */
 void rpl_send(ipv6_addr_t *destination, uint8_t *payload, uint16_t p_len, uint8_t next_header, void *tcp_socket)
 {
+
+	char addr_str[IPV6_MAX_ADDR_STR_LEN];
+
     uint8_t *p_ptr;
     ipv6_send_buf = get_rpl_send_ipv6_buf();
     p_ptr = get_rpl_send_payload_buf(ipv6_ext_hdr_len);
@@ -1206,12 +1332,14 @@ void rpl_send(ipv6_addr_t *destination, uint8_t *payload, uint16_t p_len, uint8_
     packet_length = IPV6_HDR_LEN + p_len;
 
     if (ipv6_addr_is_multicast(&ipv6_send_buf->destaddr)) {
+    	 //printf("(TEST DEBUG) send RPL packet (multicast) payload: %u / packet: %u to %x\n",p_len, packet_length, ipv6_send_buf->destaddr.uint16[4]);
+    	printf("multicast, %u bytes)\n",packet_length);
         sixlowpan_lowpan_sendto((ieee_802154_long_t *) &(ipv6_send_buf->destaddr.uint16[4]), 
                                 (uint8_t *)ipv6_send_buf,
                                 packet_length);
     }
     else {
-        /* find appropriate next hop before sending */
+        /* find appropriate next hop before sending v*/
         ipv6_addr_t *next_hop = rpl_get_next_hop(&ipv6_send_buf->destaddr);
 
         if (next_hop == NULL) {
@@ -1229,6 +1357,8 @@ void rpl_send(ipv6_addr_t *destination, uint8_t *payload, uint16_t p_len, uint8_
             }
         }
 
+    //    printf("(TEST DEBUG) send RPL packet (unicast) payload: %u / packet: %u to %x\n",p_len, packet_length, next_hop->uint16[4]);
+        printf("unicast, %u bytes)\n", packet_length);
         sixlowpan_lowpan_sendto((ieee_802154_long_t *) &(next_hop->uint16[4]), 
                                 (uint8_t *)ipv6_send_buf,
                                 packet_length);
@@ -1250,11 +1380,15 @@ ipv6_addr_t *rpl_get_next_hop(ipv6_addr_t *addr)
 void rpl_add_routing_entry(ipv6_addr_t *addr, ipv6_addr_t *next_hop, uint16_t lifetime)
 {
     rpl_routing_entry_t *entry = rpl_find_routing_entry(addr);
+    char addr_str[IPV6_MAX_ADDR_STR_LEN];
 
     if (entry != NULL) {
+    	printf("[Node %u] update downward route to %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, addr));
         entry->lifetime = lifetime;
         return;
     }
+
+    printf("[Node %u] include downward route to %s (IPv6)\n", my_address.uint8[15], ipv6_addr_to_str(addr_str, addr));
 
     for (uint8_t i = 0; i < RPL_MAX_ROUTING_ENTRIES; i++) {
         if (!routing_table[i].used) {
