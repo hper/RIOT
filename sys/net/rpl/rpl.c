@@ -46,6 +46,7 @@ uint32_t global_timestamp_tvo_process = 0;
 uint32_t global_timestamp_last_DIO = 0;
 
 uint8_t tvo_pending = 1;
+uint8_t do_trail = 0;
 
 
 char rpl_process_buf[RPL_PROCESS_STACKSIZE];
@@ -310,7 +311,7 @@ void send_DIO(ipv6_addr_t *destination)
 {
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("Send DIO to %s (IPv6: " ,ipv6_addr_to_str(addr_str, destination));
+	printf("send DIO to %s (IPv6: " ,ipv6_addr_to_str(addr_str, destination));
 	//printf("\n\n %u %u %u %u %u %u %u %u\n\n", my_address.uint16[0], my_address.uint16[1], my_address.uint16[2], my_address.uint16[3],
 		//	my_address.uint16[4], my_address.uint16[5], my_address.uint16[6], my_address.uint16[7]);
 
@@ -394,7 +395,7 @@ void send_DAO(ipv6_addr_t *destination, uint8_t lifetime, bool default_lifetime,
     }
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("Send DAO to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
+    printf("send DAO to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
 
 
     mutex_lock(&rpl_send_mutex);
@@ -489,7 +490,7 @@ void send_DAO_ACK(ipv6_addr_t *destination)
 {
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("Send DAO-ACK to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
+	printf("send DAO-ACK to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
 
     #if ENABLE_DEBUG
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
@@ -528,7 +529,7 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 //	ipv6_addr_set_all_nodes_addr(destination);
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("Send TVO to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
+	printf("send TVO to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
 
 	mutex_lock(&rpl_send_mutex);
 	rpl_dodag_t * mydodag;
@@ -643,7 +644,14 @@ struct rpl_tvo_t * rpl_tvo_init_2(struct rpl_tvo_t * tvo, uint8_t instance, uint
 }
 
 // trail auto send
+void start_with_trail(void){
+	do_trail = 1;
+	printf("TRAIL enabled\n");
+}
+
+// trail auto send
 void enable_tvo_auto_send(void){
+
 	set_tvo_auto_send();
 	/*if(tvo_auto_send == false){
 		tvo_auto_send = true;
@@ -719,7 +727,7 @@ void recv_rpl_tvo(void){
 	rpl_tvo_buf = get_rpl_tvo_buf();
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("Received TVO from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+	printf("received TVO from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
 
 	 if (rpl_tvo_buf->s_flag) {
@@ -873,7 +881,7 @@ void recv_rpl_dio(void)
 
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("Received DIO with rank %u from %s (IPv6)\n", rpl_dio_buf->rank, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    printf("received DIO with rank %u from %s (IPv6)\n", rpl_dio_buf->rank, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
 
     rpl_instance_t *dio_inst = rpl_get_instance(rpl_dio_buf->rpl_instanceid);
@@ -1016,7 +1024,7 @@ void recv_rpl_dio(void)
         	// -> unlock
         	// -> exit
         	// // In TVO if OK -> pending = false / not OK pending = false
-        	if(tvo_pending){
+        	if(tvo_pending && do_trail){
         		printf("Parent's rank %u unverified .. initializing TRAIL\n", rpl_dio_buf->rank);
         		struct rpl_tvo_t tvo;
         		printf("TVO created\n");
@@ -1199,7 +1207,7 @@ void recv_rpl_dao(void)
     ipv6_buf = get_rpl_ipv6_buf();
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("Received DAO from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    printf("received DAO from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
     rpl_dao_buf = get_rpl_dao_buf();
     int len = DAO_BASE_LEN;
@@ -1279,7 +1287,7 @@ void recv_rpl_dao_ack(void)
     ipv6_buf = get_rpl_ipv6_buf();
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("Received DAO-ACK from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    printf("received DAO-ACK from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
     if (my_dodag == NULL) {
         return;
