@@ -92,7 +92,7 @@
 #define DEFAULT_DIO_INTERVAL_MIN 9
 /* standard value: */
 /* #define DEFAULT_DIO_INTERVAL_MIN 3 */
-#define DEFAULT_DIO_INTERVAL_DOUBLINGS 7
+#define DEFAULT_DIO_INTERVAL_DOUBLINGS 9
 /* standard value: */
 /* #define DEFAULT_DIO_INTERVAL_DOUBLINGS 20 */
 #define DEFAULT_DIO_REDUNDANCY_CONSTANT 10
@@ -127,13 +127,13 @@
 
 
 #define ICMP_CODE_TVO				0x04 // trail code
+#define ICMP_CODE_TVO_ACK           0x05
 #define TVO_BASE_LEN                27 // trail tvo 26 + 48 byte signature
-#define REGULAR_TVO_INTERVAL 3 // trail TVO
-
-//trail srh: obsolete
-typedef struct __attribute__ ((packed)) srh_list_t {
-    ipv6_addr_t addr;
-} srh_list_t;
+#define TVO_LOCAL_BUFFER_LEN        10 //trail: for TVO ACK keep TVOs
+#define REGULAR_TVO_INTERVAL         5 // trail TVO
+#define DEFAULT_WAIT_FOR_TVO_ACK     5 // trail TVO
+#define TVO_SEND_RETRIES             30 // trail TVO
+#define TVO_ACK_LEN                  3 // trail tvo
 
 //trail signature
 typedef struct __attribute__ ((packed)) signature_t {
@@ -144,7 +144,7 @@ typedef struct __attribute__ ((packed)) signature_t {
 struct __attribute__((packed)) rpl_tvo_t{
     uint8_t rpl_instanceid;
     uint8_t version_number;
-    uint16_t tvo_seq;
+    uint8_t tvo_seq;
     uint16_t rank;
     uint32_t nonce;
     ipv6_addr_t src_addr;
@@ -152,19 +152,32 @@ struct __attribute__((packed)) rpl_tvo_t{
   //  signature_t signature;
 };
 
+//trail rpl_tvo
+struct __attribute__((packed)) rpl_tvo_local_t{
+    uint8_t rpl_instanceid;
+    uint8_t version_number;
+    uint8_t tvo_seq;
+    uint16_t rank;
+    uint32_t nonce;
+    ipv6_addr_t src_addr;
+    bool s_flag;
+    ipv6_addr_t dst_addr;
+    uint8_t his_tvo_seq;
+    uint32_t timestamp_received;
+
+  //  signature_t signature;
+};
+
 /* DODAG Configuration-Option (RFC 6550 Fig. 24) */
 typedef struct __attribute__((packed)) {
-    //uint8_t type;
-    //uint8_t length;
 	uint8_t uint8[1];
 } rpl_tvo_signature_t;
 
 //trail tvo-ack
 struct __attribute__((packed)) rpl_tvo_ack_t{
     uint8_t rpl_instanceid;
-    uint8_t tvo_reserved;
     uint8_t tvo_seq;
- //   uint8_t status;
+    uint8_t status;
 };
 
 /* DIO Base Object (RFC 6550 Fig. 14) */
@@ -324,5 +337,33 @@ typedef struct {
     uint16_t lifetime;
 
 } rpl_routing_entry_t;
+
+typedef struct rpl_dodag_trail_t {
+    rpl_instance_t *instance;
+    ipv6_addr_t dodag_id;
+    uint8_t used;
+    uint8_t mop;
+    uint8_t dtsn;
+    uint8_t prf;
+    uint8_t dio_interval_doubling;
+    uint8_t dio_min;
+    uint8_t dio_redundancy;
+    uint16_t maxrankincrease;
+    uint16_t minhoprankincrease;
+    uint8_t default_lifetime;
+    uint16_t lifetime_unit;
+    uint8_t version;
+    uint8_t grounded;
+    uint16_t my_rank;
+    uint8_t node_status;
+    uint8_t dao_seq;
+    uint16_t min_rank;
+    uint8_t joined;
+    rpl_parent_t *my_preferred_parent;
+    struct rpl_of_t *of;
+    uint16_t parent_rank;
+    uint8_t parent_dtsn;
+    ipv6_addr_t parent_addr;
+}rpl_dodag_trail_t;
 
 #endif

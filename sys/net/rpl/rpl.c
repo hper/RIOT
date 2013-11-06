@@ -45,8 +45,13 @@ uint16_t global_tvo_down_counter = 1;
 uint32_t global_timestamp_tvo_process = 0;
 uint32_t global_timestamp_last_DIO = 0;
 
-uint8_t tvo_pending = 1;
-uint8_t do_trail = 0;
+rpl_dodag_trail_t trail_temp_dodoag; // trail
+uint16_t tvo_sequence_number = 0;
+uint8_t tvo_pending = 1; // trail: defines if a verification is pending
+uint8_t do_trail = 0; // trail: enables / disables trail on startup
+struct rpl_tvo_local_t tvo_resend; //trail
+struct rpl_tvo_local_t tvo_local_buffer[TVO_LOCAL_BUFFER_LEN]; //trail
+uint8_t tvo_local_flags[TVO_LOCAL_BUFFER_LEN]; //trail
 
 
 char rpl_process_buf[RPL_PROCESS_STACKSIZE];
@@ -73,6 +78,7 @@ static struct rpl_dao_t *rpl_send_dao_buf;
 static struct rpl_dao_ack_t *rpl_send_dao_ack_buf;
 
 static struct rpl_tvo_t *rpl_send_tvo_buf; //trail send buffer
+static struct rpl_tvo_ack_t *rpl_send_tvo_ack_buf; //trail send tvo-ack buffer
 
 static rpl_opt_dodag_conf_t *rpl_send_opt_dodag_conf_buf;
 /* static struct rpl_opt_solicited_t * rpl_send_opt_solicited_buf; */
@@ -89,6 +95,7 @@ static struct rpl_dao_ack_t *rpl_dao_ack_buf;
 static struct rpl_tvo_t *rpl_tvo_buf; // trail tvo buffer
 static rpl_tvo_signature_t *rpl_send_tvo_signature_buf; // trail tvo buffer
 static rpl_tvo_signature_t *rpl_tvo_signature_buf; // trail tvo buffer
+static struct rpl_tvo_ack_t *rpl_tvo_ack_buf; // trail tvo-ack buffer
 
 static rpl_opt_t *rpl_opt_buf;
 static rpl_opt_dodag_conf_t *rpl_opt_dodag_conf_buf;
@@ -128,7 +135,7 @@ static struct rpl_dis_t *get_rpl_send_dis_buf(void) {
 }
 
 //trail get send tvo buffer
-static struct rpl_tvo_t* get_rpl_send_tvo_buf(){
+static struct rpl_tvo_t* get_rpl_send_tvo_buf(void){
 	return ((struct rpl_tvo_t*)&(rpl_send_buffer[IPV6_HDR_LEN + ICMPV6_HDR_LEN]));
 }
 
@@ -137,6 +144,12 @@ static rpl_tvo_signature_t *get_rpl_send_tvo_signature_buf(uint8_t rpl_msg_len)
 {
     return ((rpl_tvo_signature_t *) &(rpl_send_buffer[IPV6_HDR_LEN + ICMPV6_HDR_LEN + rpl_msg_len]));
 }
+
+//trail get send tvo tvo-ack buffer
+static struct rpl_tvo_ack_t *get_rpl_send_tvo_ack_buf(void) {
+    return ((struct rpl_tvo_ack_t *) &(rpl_send_buffer[IPV6_HDR_LEN + ICMPV6_HDR_LEN]));
+}
+
 
 static rpl_opt_dodag_conf_t *get_rpl_send_opt_dodag_conf_buf(uint8_t rpl_msg_len)
 {
@@ -183,6 +196,10 @@ static struct rpl_tvo_t* get_rpl_tvo_buf(){
 static rpl_tvo_signature_t *get_tvo_signature_buf(uint8_t rpl_msg_len)
 {
     return ((rpl_tvo_signature_t *) &(rpl_buffer[IPV6_HDR_LEN + ICMPV6_HDR_LEN + rpl_msg_len]));
+}
+
+static struct rpl_tvo_ack_t *get_rpl_tvo_ack_buf(void) {
+    return ((struct rpl_tvo_ack_t *) &(buffer[(LL_HDR_LEN + IPV6_HDR_LEN + ICMPV6_HDR_LEN)]));
 }
 
 static rpl_opt_t *get_rpl_opt_buf(uint8_t rpl_msg_len)
@@ -524,12 +541,15 @@ void send_DAO_ACK(ipv6_addr_t *destination)
 //trail send tvo
 void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signature_t * signature){
 
+	memcpy(&tvo_resend, tvo, sizeof(*tvo));
+	memcpy(&tvo_resend.dst_addr, destination, sizeof(*destination));
+
 //	ipv6_addr_t mcast;
 //	ipv6_addr_set_all_nodes_addr(&mcast);
 //	ipv6_addr_set_all_nodes_addr(destination);
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("send TVO to %s (IPv6: ", ipv6_addr_to_str(addr_str, destination));
+	printf("send TVO (seq: %u) to %s (IPv6: ", tvo->tvo_seq , ipv6_addr_to_str(addr_str, destination));
 
 	mutex_lock(&rpl_send_mutex);
 	rpl_dodag_t * mydodag;
@@ -561,7 +581,6 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 	uint16_t tvo_base_length = sizeof(*tvo);
 //	printf("(TEST DEBUG) ***** base length calculated: %u / counted %u\n\n",tvo_base_length, TVO_BASE_LEN);
 
-
 	uint8_t size_signature = 0;
 
 	if(signature != NULL && rpl_send_tvo_buf->s_flag){
@@ -571,9 +590,9 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 //		printf("(TEST DEBUG) send TVO: signature=%u / rpl_send_tvo_signature_buf=%u / size=%u\n\n",signature->uint8[0], rpl_send_tvo_signature_buf->uint8[0], size_signature);
 	}
 
-	timex_t now;
-	vtimer_now(&now);
-	uint32_t timestamp = now.microseconds;
+//	timex_t now;
+//	vtimer_now(&now);
+//	uint32_t timestamp = now.microseconds;
 
 	uint16_t plen = ICMPV6_HDR_LEN + size_signature + tvo_base_length;// + (rpl_send_tvo_buf->srh_list_size * sizeof(srh_list_t));
 //	printf("\n(TEST DEBUG) %u = %u + %u + %u\n\n",plen, ICMPV6_HDR_LEN, size_signature, tvo_base_length);
@@ -581,6 +600,40 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 	rpl_send(destination,(uint8_t*)icmp_send_buf, plen, IPV6_PROTO_NUM_ICMPV6, NULL);
 
 	mutex_unlock(&rpl_send_mutex);
+
+}
+
+void send_TVO_ACK(ipv6_addr_t *destination, uint8_t sequence_number)
+{
+	char addr_str[IPV6_MAX_ADDR_STR_LEN];
+	printf("send TVO-ACK (seq: %u) to %s (IPv6: ", sequence_number, ipv6_addr_to_str(addr_str, destination));
+
+    #if ENABLE_DEBUG
+    char addr_str[IPV6_MAX_ADDR_STR_LEN];
+    printf("%s\n", ipv6_addr_to_str(addr_str, destination));
+    #endif
+    rpl_dodag_t *my_dodag;
+    my_dodag = rpl_get_my_dodag();
+
+    if (my_dodag == NULL) {
+        return;
+    }
+
+    mutex_lock(&rpl_send_mutex);
+    icmp_send_buf = get_rpl_send_icmpv6_buf(ipv6_ext_hdr_len);
+
+    icmp_send_buf->type = ICMPV6_TYPE_RPL_CONTROL;
+    icmp_send_buf->code = ICMP_CODE_TVO_ACK;
+    icmp_send_buf->checksum = ~icmpv6_csum(IPV6_PROTO_NUM_ICMPV6);
+
+    rpl_send_tvo_ack_buf = get_rpl_send_tvo_ack_buf();
+    rpl_send_tvo_ack_buf->rpl_instanceid = my_dodag->instance->id;
+    rpl_send_tvo_ack_buf->tvo_seq = sequence_number;
+    rpl_send_tvo_ack_buf->status = 0;
+
+    uint16_t plen = ICMPV6_HDR_LEN + TVO_ACK_LEN;
+    rpl_send(destination, (uint8_t *)icmp_send_buf, plen, IPV6_PROTO_NUM_ICMPV6, NULL);
+    mutex_unlock(&rpl_send_mutex);
 }
 
 //trail tvo init
@@ -637,8 +690,12 @@ struct rpl_tvo_t * rpl_tvo_init_2(struct rpl_tvo_t * tvo, uint8_t instance, uint
 
 	tvo->s_flag = 0;
 	tvo->src_addr = my_address;
-	tvo->tvo_seq = global_tvo_counter;
-	global_tvo_counter++;
+
+	//tvo->tvo_seq = global_tvo_counter;
+	//global_tvo_counter++;
+
+	tvo_sequence_number++;
+	tvo->tvo_seq = tvo_sequence_number;
 	tvo->version_number = version_number;
 	return &tvo;
 }
@@ -660,7 +717,104 @@ void enable_tvo_auto_send(void){
 	}*/
 }
 
-// trail receive tvo
+//trail
+void tvo_ack_has_been_received(ipv6_addr_t * source, uint8_t tvo_seq){
+	uint16_t i;
+
+	for(i=0;i<TVO_LOCAL_BUFFER_LEN;i++)
+	{
+		if(tvo_local_buffer[i].his_tvo_seq == tvo_seq && tvo_local_buffer[i].dst_addr.uint8[15] == source->uint8[15]){
+			printf("freeing tvo buffer at %u\n",i);
+			tvo_local_flags[i] = 0; //free array index
+		}
+	}
+}
+
+//trail
+struct rpl_tvo_local_t * has_tvo_been_received(ipv6_addr_t * source, uint8_t tvo_seq){
+
+	//iterate over all saved tvos
+	// if source and tvo_seq match for a tvo
+	// return 1;
+
+	uint16_t i;
+
+	for(i=0;i<TVO_LOCAL_BUFFER_LEN;i++)
+	{
+			//if(tvo_local_flags[i] == 1)
+		//	{
+				if(tvo_local_buffer[i].his_tvo_seq == tvo_seq && tvo_local_buffer[i].dst_addr.uint8[15] == source->uint8[15]){
+					return &tvo_local_buffer[i];
+				}
+		//	}
+	}
+	return NULL;
+}
+
+//trail
+void save_tvo_locally(struct rpl_tvo_local_t * tvo_copy){
+    // look for free spot in array
+	// if found: save tvo
+	// if not: delete oldest entry or first entry ..
+
+	uint8_t found_spot = 0;
+	uint32_t temp_ts = UINT32_MAX;
+	uint32_t i;
+	uint32_t j = 0;
+
+	for(i=0;i<TVO_LOCAL_BUFFER_LEN;i++){
+		if(tvo_local_flags[i] == 0){
+			found_spot = 1;
+			//tvo_local_buffer[i] = tvo_copy;
+			memcpy(&tvo_local_buffer[i], tvo_copy, sizeof(*tvo_copy));
+			printf("blocking tvo buffer at %u with size %u\n",i,sizeof(*tvo_copy));
+			tvo_local_flags[i] = 1;
+			break;
+		}
+		if(tvo_local_buffer[i].timestamp_received < temp_ts){
+			temp_ts = tvo_local_buffer[i].timestamp_received;
+			j = i;
+		}
+	}
+	if(found_spot == 0){
+		memcpy(&tvo_local_buffer[j], tvo_copy, sizeof(*tvo_copy));
+		tvo_local_flags[j] = 1;
+		printf("blocking tvo buffer at %u\n",j);
+		//tvo_local_buffer[j] = tvo_copy;
+	}
+
+
+}
+
+//trail
+void resend_tvos(){
+	printf("\n\n   ########### CHECKING FOR TVO RESENDS ########\n\n");
+    // iterate over saved tvos
+	// check timestamp now - ts_tvo > max_wait_for_ack
+	// send if greater
+	// don't send if not
+	// return
+
+	uint32_t i;
+	timex_t now;
+	vtimer_now(&now);
+
+	for(i=0;i<TVO_LOCAL_BUFFER_LEN;i++){
+		if(tvo_local_flags[i] == 1){ //only resend for which no ack has been received
+			if((now.microseconds - tvo_local_buffer[i].timestamp_received) > DEFAULT_WAIT_FOR_TVO_ACK){
+				//resend tvo
+				struct rpl_tvo_t tvo;
+				//rpl_tvo_init(&tvo);
+				memcpy(&tvo, &tvo_local_buffer[i], sizeof(tvo));
+				tvo.tvo_seq = tvo_local_buffer[i].his_tvo_seq;
+				printf("*RE*");
+				send_TVO(&tvo_local_buffer[i].dst_addr, &tvo, NULL);
+			}
+		}
+	}
+}
+
+
 void rpl_process(void)
 {
 
@@ -675,6 +829,7 @@ void rpl_process(void)
         ipv6_buf = ipv6_get_buf();
         memcpy(&rpl_buffer, ipv6_buf, ipv6_buf->length + IPV6_HDR_LEN);
 
+        mutex_lock(&rpl_recv_mutex);
         switch (*code) {
             case (ICMP_CODE_DIS): {
                 recv_rpl_dis();
@@ -706,6 +861,12 @@ void rpl_process(void)
                 break;
              }
 
+            case (ICMP_CODE_TVO_ACK): {
+                recv_rpl_tvo_ack();
+                mutex_unlock(&rpl_recv_mutex);
+                break;
+             }
+
             default:
                 mutex_unlock(&rpl_recv_mutex);
                 break;
@@ -713,7 +874,7 @@ void rpl_process(void)
     }
 }
 
-
+// trail receive tvo
 void recv_rpl_tvo(void){
 
 	ipv6_addr_t ll_address;
@@ -727,25 +888,55 @@ void recv_rpl_tvo(void){
 	rpl_tvo_buf = get_rpl_tvo_buf();
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("received TVO from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
-
-
+	printf("received TVO (seq: %u) from %s (IPv6)\n", rpl_tvo_buf->tvo_seq, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 	 if (rpl_tvo_buf->s_flag) {
 	        rpl_opt_buf = get_rpl_opt_buf(TVO_BASE_LEN);
 	        rpl_tvo_signature_buf = get_tvo_signature_buf(TVO_BASE_LEN);
-	      //  printf("\n\n (TEST DEBUG) received tvo signature: %u\n\n",rpl_tvo_signature_buf->uint8[0]);
 	 }
 
+	 tvo_sequence_number++;
+	 struct rpl_tvo_local_t * local_tvo = has_tvo_been_received(&ipv6_buf->srcaddr, rpl_tvo_buf->tvo_seq);
+
+	 if(local_tvo != NULL) // already received
+	 {
+		 /**
+		  * refactor: eigentlich wird nur tvo_seq benötigt. Zweiten array mit addr_suffix und seq number
+		  * suche nach tupel
+		  * sende ack oder sonst speicher zum forwarden
+		  * --> tvo struct muss nur zum forwarden gespeichert werden
+		  * --> zum acken könnten so wesentlich mehr vorenthalten werden
+		  * --> acken und forwarden wäre entkoppelt -> "löschen, da ack erhalten" hat dann nichts mehr mit
+		  *  "sollte die TVO noch acken" zu tun.
+		  */
+		 send_TVO_ACK(&(ipv6_buf->srcaddr), local_tvo->his_tvo_seq);
+		 return;
+	 }
+	 else
+	 {
+		 struct rpl_tvo_local_t tvo_inst;
+		 local_tvo = &tvo_inst;
+		 // copy tvo to local_tvo
+		 memset(local_tvo, 0, sizeof(*local_tvo));
+		 memcpy(local_tvo, rpl_tvo_buf, sizeof(*rpl_tvo_buf));
+
+		 // assign his_counter (tvo.seqnr) to local tvo.his_seq_num
+		 local_tvo->his_tvo_seq = local_tvo->tvo_seq;
+		 // assign tvo_seq_number to local tvo Seq number
+		 local_tvo->tvo_seq = tvo_sequence_number;
+		 // give local tvo a timestamp
+		 timex_t now;
+		 vtimer_now(&now);
+		 local_tvo->timestamp_received = now.microseconds;
+		 //save destination / source
+		 local_tvo->dst_addr = ipv6_buf->srcaddr;
+		 // save_tvo_locally(local_tvo);
+		 save_tvo_locally(local_tvo);
+		 // send ack?
+		 send_TVO_ACK(&(ipv6_buf->srcaddr), local_tvo->his_tvo_seq);
+	 }
 
 	rpl_dodag_t *my_dodag = rpl_get_my_dodag();
 	if(my_dodag == NULL){
-	}
-
-	// check instance
-	rpl_instance_t * my_inst = rpl_get_my_instance();
-	rpl_instance_t * tvo_inst = rpl_get_instance(rpl_tvo_buf->rpl_instanceid);
-	if(tvo_inst->id != my_inst->id){
-	//	return;
 	}
 
 	if(rpl_tvo_buf->s_flag){ //response
@@ -756,7 +947,9 @@ void recv_rpl_tvo(void){
 
 			if(rpl_tvo_signature_buf->uint8[0] != 0){ //TODO any signture-dummy is OK
 			//if(1){
-			    timex_t now;
+		/*
+		 * REQUIRED FOR EXPERIMENTS: MASTER
+		        timex_t now;
 			    vtimer_now(&now);
 				timestamp = now.microseconds;
 
@@ -766,19 +959,25 @@ void recv_rpl_tvo(void){
 			//		printf("%u 0 0 %u yyy 1 0 0 \n",global_success_tvo_counter, global_loss_tvo_counter);
 					global_success_tvo_counter++;
 				}
-				//printf("%u %u %u ",rpl_tvo_buf->tvo_seq, ts_diff,global_loss_tvo_counter);
+				////printf("%u %u %u ",rpl_tvo_buf->tvo_seq, ts_diff,global_loss_tvo_counter);
 			//	printf("%u %u %u %u yyy 1 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce ,global_loss_tvo_counter);
 				global_success_tvo_counter++;
-
+		*/
 				printf("**valid**\n");
 
 				tvo_pending = 0;
+				//received_tvo_ack(); // if not received, no further ACK required
+
+				//finish joining
+				rpl_dodag_t dio_dodag;
+				memcpy(&dio_dodag, &trail_temp_dodoag, sizeof(dio_dodag));
+				join_dodag(&dio_dodag, &trail_temp_dodoag.parent_addr, trail_temp_dodoag.parent_rank, trail_temp_dodoag.parent_dtsn);
 
 				return;
 			}
 			else{
-				//printf("\n TVO did not contain signature!\n");
 				printf(" **invalid**\n");
+				tvo_pending = 1; // use trail again, if new DIO from new parent received
 				return;
 			}
 		}
@@ -787,7 +986,9 @@ void recv_rpl_tvo(void){
 			 * COUNTER Received tvo on way back
 			 * TVO_seq travel_time msg_loss
 			 */
-			  timex_t now;
+		/*
+		 *   REQUIRED FOR EXPERIMENTS: MASTER
+		      timex_t now;
               vtimer_now(&now);
               timestamp = now.microseconds;
 
@@ -799,6 +1000,8 @@ void recv_rpl_tvo(void){
 			}
 	   //     printf("%u %u %u %u xxx 1 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce,global_loss_down_tvo_counter);
 			global_tvo_down_counter++;
+		*/
+
 			next_hop = rpl_get_next_hop(&rpl_tvo_buf->src_addr);
 		}
 	}
@@ -869,8 +1072,30 @@ void recv_rpl_tvo(void){
 		}
 	}
 	send_TVO(next_hop, rpl_tvo_buf, rpl_tvo_signature_buf);
+	short_delay_tvo();
+//	delay_tvo(&tvo_resend);
 }
 
+
+void recv_rpl_tvo_ack(void)
+{
+
+    rpl_dodag_t *my_dodag = rpl_get_my_dodag();
+
+    ipv6_buf = get_rpl_ipv6_buf();
+    rpl_tvo_ack_buf = get_rpl_tvo_ack_buf();
+
+    char addr_str[IPV6_MAX_ADDR_STR_LEN];
+    printf("\n\n**** received TVO-ACK (seq: %u) from %s (IPv6)\n\n", rpl_tvo_ack_buf->tvo_seq ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+
+    if (rpl_tvo_ack_buf->status != 0) {
+        return;
+    }
+
+  //  received_tvo_ack();
+    tvo_ack_has_been_received(&ipv6_buf->srcaddr, rpl_tvo_ack_buf->tvo_seq);
+
+}
 
 
 void recv_rpl_dio(void)
@@ -881,8 +1106,7 @@ void recv_rpl_dio(void)
 
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("received DIO with rank %u from %s (IPv6)\n", rpl_dio_buf->rank, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
-
+    printf("received DIO from %s (IPv6)\n", ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
     rpl_instance_t *dio_inst = rpl_get_instance(rpl_dio_buf->rpl_instanceid);
     rpl_instance_t *my_inst = rpl_get_my_instance();
@@ -893,8 +1117,7 @@ void recv_rpl_dio(void)
             return;
         }
 
-        dio_inst = rpl_new_instance(rpl_dio_buf->rpl_instanceid);
-
+        dio_inst = rpl_create_new_instance(rpl_dio_buf->rpl_instanceid);//rpl_new_instance(rpl_dio_buf->rpl_instanceid);
         if (dio_inst == NULL) {
             return;
         }
@@ -912,7 +1135,6 @@ void recv_rpl_dio(void)
 
     rpl_dodag_t dio_dodag;
     memset(&dio_dodag, 0, sizeof(dio_dodag));
-
     memcpy(&dio_dodag.dodag_id, &rpl_dio_buf->dodagid, sizeof(dio_dodag.dodag_id));
     dio_dodag.dtsn = rpl_dio_buf->dtsn;
     dio_dodag.mop = ((rpl_dio_buf->g_mop_prf >> RPL_MOP_SHIFT) & RPL_SHIFTED_MOP_MASK);
@@ -920,7 +1142,6 @@ void recv_rpl_dio(void)
     dio_dodag.prf = (rpl_dio_buf->g_mop_prf & RPL_PRF_MASK);
     dio_dodag.version = rpl_dio_buf->version_number;
     dio_dodag.instance = dio_inst;
-
     uint8_t has_dodag_conf_opt = 0;
 
     /* Parse until all options are consumed.
@@ -1024,7 +1245,7 @@ void recv_rpl_dio(void)
         	// -> unlock
         	// -> exit
         	// // In TVO if OK -> pending = false / not OK pending = false
-        	if(tvo_pending && do_trail){
+        	if(tvo_pending && do_trail){ //do_trail enables TRAIL
         		printf("Parent's rank %u unverified .. initializing TRAIL\n", rpl_dio_buf->rank);
         		struct rpl_tvo_t tvo;
         		printf("TVO created\n");
@@ -1035,22 +1256,21 @@ void recv_rpl_dio(void)
         		ipv6_addr_set_all_nodes_addr(&mcast);
 
         		send_TVO(&mcast, &tvo, NULL);
+        		//delay_tvo(&tvo_resend);
+        		short_delay_tvo();
+
         		//send_TVO(&ipv6_buf->srcaddr, &tvo, NULL);
-        		rpl_delete_instance(rpl_dio_buf->rpl_instanceid);
+        		//rpl_delete_instance(rpl_dio_buf->rpl_instanceid);
+
+        		memcpy(&trail_temp_dodoag, &dio_dodag,sizeof(dio_dodag));
+        		trail_temp_dodoag.parent_rank = rpl_dio_buf->rank;
+        		trail_temp_dodoag.parent_dtsn = rpl_dio_buf->dtsn;
+        		trail_temp_dodoag.parent_addr = ipv6_buf->srcaddr;
+
+        		printf("(TEST DEBUG, rec_DIO) dio_dodag rank: %u / trail_temp rank: %u / sizeof(dio_dodag): %u / sizeof(&dio_dodag): %u \n", dio_dodag.my_rank, trail_temp_dodoag.my_rank,sizeof(dio_dodag),sizeof(&dio_dodag));
+
         		return;
         	}
-
-
-            DEBUG("Will join DODAG: ");
-
-            char addr_str[IPV6_MAX_ADDR_STR_LEN];
-            printf("Joining network with DODAG ID: %s\n",ipv6_addr_to_str(addr_str, &dio_dodag.dodag_id));
-
-            #if ENABLE_DEBUG
-                char addr_str[IPV6_MAX_ADDR_STR_LEN];        
-                printf("%s\n", ipv6_addr_to_str(addr_str, &dio_dodag.dodag_id));
-            #endif
-            rpl_join_dodag(&dio_dodag, &ipv6_buf->srcaddr, rpl_dio_buf->rank);
         }
         else {
             DEBUG("Cannot access DODAG because of DIO with infinite rank\n");
@@ -1058,73 +1278,94 @@ void recv_rpl_dio(void)
         }
     }
 
-    if (rpl_equal_id(&my_dodag->dodag_id, &dio_dodag.dodag_id)) {
-        /* "our" DODAG */
-        if (RPL_COUNTER_GREATER_THAN(dio_dodag.version, my_dodag->version)) {
-            if (my_dodag->my_rank == ROOT_RANK) {
-                DEBUG("[Warning] Inconsistent Dodag Version\n");
-                my_dodag->version = RPL_COUNTER_INCREMENT(dio_dodag.version);
-                reset_trickletimer();
-            }
-            else {
-                DEBUG("[Info] New Version of dodag %d\n", dio_dodag.version);
-                rpl_global_repair(&dio_dodag, &ipv6_buf->srcaddr, rpl_dio_buf->rank);
-            }
+    join_dodag(&dio_dodag, &ipv6_buf->srcaddr, rpl_dio_buf->rank, rpl_dio_buf->dtsn);
 
-            return;
-        }
-        else if (RPL_COUNTER_GREATER_THAN(my_dodag->version, dio_dodag.version)) {
-            /* ein Knoten hat noch eine kleinere Versionsnummer -> mehr DIOs senden */
-            reset_trickletimer();
-            return;
-        }
-    }
 
-    /* version matches, DODAG matches */
-    if (rpl_dio_buf->rank == INFINITE_RANK) {
-        reset_trickletimer();
-    }
+}
 
-    /* We are root, all done! */
-    if (my_dodag->my_rank == ROOT_RANK) {
-        if (rpl_dio_buf->rank != INFINITE_RANK) {
-            trickle_increment_counter();
-        }
+void join_dodag(rpl_dodag_t * dio_dodag, ipv6_addr_t * src_addr, uint16_t parent_rank, uint8_t parent_dtsn){
 
-        return;
-    }
+	rpl_dodag_t *my_dodag = rpl_get_my_dodag();
 
-    /*********************  Parent Handling *********************/
+	if(my_dodag == NULL){
+		DEBUG("Will join DODAG: ");
 
-    rpl_parent_t *parent;
-    parent = rpl_find_parent(&ipv6_buf->srcaddr);
+		char addr_str[IPV6_MAX_ADDR_STR_LEN];
+		printf("Joining network with DODAG ID: %s\n",ipv6_addr_to_str(addr_str, &dio_dodag->dodag_id));
 
-    if (parent == NULL) {
-        /* add new parent candidate */
-        parent = rpl_new_parent(my_dodag, &ipv6_buf->srcaddr, rpl_dio_buf->rank);
+		#if ENABLE_DEBUG
+			char addr_str[IPV6_MAX_ADDR_STR_LEN];
+			printf("%s\n", ipv6_addr_to_str(addr_str, &dio_dodag.dodag_id));
+		#endif
+		rpl_join_dodag(dio_dodag, &src_addr, parent_rank);
+	}
 
-        if (parent == NULL) {
-            return;
-        }
-    }
-    else {
-        /* DIO OK */
-        trickle_increment_counter();
-    }
+	if (rpl_equal_id(&my_dodag->dodag_id, &dio_dodag->dodag_id)) {
+	        /* "our" DODAG */
+	        if (RPL_COUNTER_GREATER_THAN(dio_dodag->version, my_dodag->version)) {
+	            if (my_dodag->my_rank == ROOT_RANK) {
+	                DEBUG("[Warning] Inconsistent Dodag Version\n");
+	                my_dodag->version = RPL_COUNTER_INCREMENT(dio_dodag->version);
+	                reset_trickletimer();
+	            }
+	            else {
+	                DEBUG("[Info] New Version of dodag %d\n", dio_dodag.version);
+	                rpl_global_repair(dio_dodag, &src_addr, parent_rank);
+	            }
 
-    /* update parent rank */
-    parent->rank = rpl_dio_buf->rank;
-    rpl_parent_update(parent);
+	            return;
+	        }
+	        else if (RPL_COUNTER_GREATER_THAN(my_dodag->version, dio_dodag->version)) {
+	            /* ein Knoten hat noch eine kleinere Versionsnummer -> mehr DIOs senden */
+	            reset_trickletimer();
+	            return;
+	        }
+	    }
 
-    //char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("Update parent (rank %u): %s (IPv6)\n", parent->rank, ipv6_addr_to_str(addr_str, &(parent->addr)));
+	    /* version matches, DODAG matches */
+	    if (parent_rank == INFINITE_RANK) {
+	        reset_trickletimer();
+	    }
 
-    if (rpl_equal_id(&parent->addr, &my_dodag->my_preferred_parent->addr) && (parent->dtsn != rpl_dio_buf->dtsn)) {
-        delay_dao();
-    }
+	    /* We are root, all done! */
+	    if (my_dodag->my_rank == ROOT_RANK) {
+	        if (parent_rank != INFINITE_RANK) {
+	            trickle_increment_counter();
+	        }
 
-    parent->dtsn = rpl_dio_buf->dtsn;
+	        return;
+	    }
 
+	    /*********************  Parent Handling *********************/
+
+	    rpl_parent_t *parent;
+	    parent = rpl_find_parent(&src_addr);
+
+	    if (parent == NULL) {
+	        /* add new parent candidate */
+	        parent = rpl_new_parent(my_dodag, &src_addr, parent_rank);
+
+	        if (parent == NULL) {
+	            return;
+	        }
+	    }
+	    else {
+	        /* DIO OK */
+	        trickle_increment_counter();
+	    }
+
+	    /* update parent rank */
+	    parent->rank = parent_rank;
+	    rpl_parent_update(parent);
+
+	    char addr_str[IPV6_MAX_ADDR_STR_LEN];
+	    printf("Update parent (rank %u): %s (IPv6)\n", parent->rank, ipv6_addr_to_str(addr_str, &(parent->addr)));
+
+	    if (rpl_equal_id(&parent->addr, &my_dodag->my_preferred_parent->addr) && (parent->dtsn != parent_dtsn)) {
+	        delay_dao();
+	    }
+
+	    parent->dtsn = parent_dtsn;
 }
 
 void recv_rpl_dis(void)

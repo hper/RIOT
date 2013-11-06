@@ -42,6 +42,16 @@ rpl_instance_t *rpl_new_instance(uint8_t instanceid)
 
     return NULL;
 }
+
+rpl_instance_t *rpl_create_new_instance(uint8_t instanceid)
+{
+    rpl_instance_t inst;
+    memset(&inst, 0, sizeof(inst));
+    inst.used = 1;
+    inst.id = instanceid;
+    return &inst;
+}
+
 rpl_instance_t *rpl_get_instance(uint8_t instanceid)
 {
     for (int i = 0; i < RPL_MAX_INSTANCES; i++) {
@@ -300,6 +310,11 @@ void rpl_join_dodag(rpl_dodag_t *dodag, ipv6_addr_t *parent, uint16_t parent_ran
 {
     rpl_dodag_t *my_dodag;
     rpl_parent_t *preferred_parent;
+
+    if(rpl_get_instance(dodag->instance->id) == NULL){
+    	rpl_new_instance(dodag->instance->id);
+    }
+
     my_dodag = rpl_new_dodag(dodag->instance->id, &dodag->dodag_id);
 
     if (my_dodag == NULL) {

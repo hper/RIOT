@@ -34,6 +34,9 @@ int tvo_delay_over_pid; // trail
 bool tvo_auto_send = false; // trail
 timex_t tvo_time; // trail
 vtimer_t tvo_timer; // trail
+bool tvo_ack_received; // trail
+uint8_t tvo_counter; // trail
+struct rpl_tvo_local_t * tvo_resend; //trail
 
 char routing_table_buf[RT_STACKSIZE];
 int timer_over_pid;
@@ -122,6 +125,7 @@ void init_trickle(void)
                                       PRIORITY_MAIN - 1, CREATE_STACKTEST,
                                       rt_timer_over, "rt_timer_over");
     //trail
+    tvo_ack_received = true;
     tvo_delay_over_pid = thread_create(tvo_delay_over_buf, TVO_DELAY_STACKSIZE,
     										  PRIORITY_MAIN-1, CREATE_STACKTEST,
     										  tvo_delay_over, "tvo_delay_over");
@@ -215,26 +219,41 @@ void trickle_interval_over(void)
 void tvo_delay_over(void){
 
 	while(1){
-		//	printf("(trickle.c tvo_delay) I'm here -> going to sleep ...\n");
+
 		thread_sleep();
-		//	printf("(trickle.c tvo_delay) ... woke up! \n");
-		if(tvo_auto_send == true){
-			//		printf("(trickle.c tvo_delay) going to send TVO \n");
+
+		//if((tvo_ack_received == false) && (tvo_counter < TVO_SEND_RETRIES)){
+		if(tvo_counter < TVO_SEND_RETRIES){
+			tvo_counter++;
 			rpl_dodag_t * mydodag = rpl_get_my_dodag();
 
+			/*
 			struct rpl_tvo_t tvo;
-			rpl_tvo_init(&tvo);
-			send_TVO(&mydodag->my_preferred_parent->addr, &tvo, NULL);
+			//rpl_tvo_init(&tvo);
 
-		//	tvo_time = timex_set(REGULAR_TVO_INTERVAL,0);
-			//vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
+			memcpy(&tvo, tvo_resend, sizeof(tvo));
 
-			delay_tvo();
+			//printf("\n(checking trickle) tvo_nonce: %u, tvo_rank: %u, resend_nonce: %u, resend_rank: %u \n\n", tvo.nonce, tvo.rank, tvo_resend->nonce, tvo_resend->rank);
+
+			printf("*RE*");
+			send_TVO(&(tvo_resend->dst_addr), &tvo, NULL);
+*/
+			resend_tvos();
+            tvo_time = timex_set(DEFAULT_WAIT_FOR_TVO_ACK, 0);
+            vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
 		}
-		else{
-			delay_tvo();
-		}
+	//	else if (tvo_ack_received == false){
+	//		long_delay_tvo();
+	//	}
 	}
+}
+
+//trail
+void received_tvo_ack()
+{
+	printf("\n SETTING TVO_ACK_RECEIVED TO TRUE\n\n");
+    tvo_ack_received = true;
+    long_delay_tvo();
 }
 
 //trail
@@ -246,20 +265,34 @@ void set_tvo_auto_send(){
 	}else{
 		printf("(trickle.c) setting tvo_auto_send to true (disable with 'a')\n");
 		tvo_auto_send = true;
-		delay_tvo();
+		//delay_tvo();
 	}
 }
 
 //trail
-void delay_tvo(void){
+void short_delay_tvo(){
 	tvo_time = timex_set(REGULAR_TVO_INTERVAL,0);
+	tvo_counter = 0;
+	tvo_ack_received = false;
+	vtimer_remove(&tvo_timer);
+	vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
+}
+
+//trail
+void delay_tvo(struct rpl_tvo_local_t * tvo){
+	tvo_resend = tvo; //trail
+	tvo_time = timex_set(REGULAR_TVO_INTERVAL,0);
+	tvo_counter = 0;
+	tvo_ack_received = false;
 	vtimer_remove(&tvo_timer);
 	vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
 }
 
 //trail
 void long_delay_tvo(void){
-	tvo_time = timex_set(10000,0);
+	tvo_time = timex_set(1000000,0);
+	tvo_counter = 0;
+	tvo_ack_received = false;
 	vtimer_remove(&tvo_timer);
 	vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
 }
