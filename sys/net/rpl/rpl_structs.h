@@ -92,7 +92,7 @@
 #define DEFAULT_DIO_INTERVAL_MIN 9
 /* standard value: */
 /* #define DEFAULT_DIO_INTERVAL_MIN 3 */
-#define DEFAULT_DIO_INTERVAL_DOUBLINGS 9
+#define DEFAULT_DIO_INTERVAL_DOUBLINGS 7
 /* standard value: */
 /* #define DEFAULT_DIO_INTERVAL_DOUBLINGS 20 */
 #define DEFAULT_DIO_REDUNDANCY_CONSTANT 10
@@ -129,11 +129,13 @@
 #define ICMP_CODE_TVO				0x04 // trail code
 #define ICMP_CODE_TVO_ACK           0x05
 #define TVO_BASE_LEN                27 // trail tvo 26 + 48 byte signature
-#define TVO_LOCAL_BUFFER_LEN        10 //trail: for TVO ACK keep TVOs
-#define REGULAR_TVO_INTERVAL         5 // trail TVO
-#define DEFAULT_WAIT_FOR_TVO_ACK     5 // trail TVO
-#define TVO_SEND_RETRIES             30 // trail TVO
 #define TVO_ACK_LEN                  3 // trail tvo
+#define TVO_LOCAL_BUFFER_LEN        10 //trail: for TVO ACK keep TVOs
+#define DEFAULT_WAIT_FOR_TVO_ACK     3 // trail TVO
+#define LONG_WAIT_FOR_TVO_ACK  1000000 // trail TVO
+#define TEST_WAIT_FOR_TVO_ACK        10 // trail TVO
+#define TVO_SEND_RETRIES             3 // trail TVO
+
 
 //trail signature
 typedef struct __attribute__ ((packed)) signature_t {
@@ -164,7 +166,7 @@ struct __attribute__((packed)) rpl_tvo_local_t{
     ipv6_addr_t dst_addr;
     uint8_t his_tvo_seq;
     uint32_t timestamp_received;
-
+    uint8_t number_resend;
   //  signature_t signature;
 };
 

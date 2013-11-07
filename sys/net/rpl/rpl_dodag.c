@@ -310,24 +310,20 @@ void rpl_join_dodag(rpl_dodag_t *dodag, ipv6_addr_t *parent, uint16_t parent_ran
 {
     rpl_dodag_t *my_dodag;
     rpl_parent_t *preferred_parent;
-
     if(rpl_get_instance(dodag->instance->id) == NULL){
     	rpl_new_instance(dodag->instance->id);
     }
-
     my_dodag = rpl_new_dodag(dodag->instance->id, &dodag->dodag_id);
 
     if (my_dodag == NULL) {
         return;
     }
-
     preferred_parent = rpl_new_parent(my_dodag, parent, parent_rank);
 
     if (preferred_parent == NULL) {
         rpl_del_dodag(my_dodag);
         return;
     }
-
     my_dodag->instance->joined = 1;
     my_dodag->of = dodag->of;
     my_dodag->mop = dodag->mop;
@@ -351,7 +347,6 @@ void rpl_join_dodag(rpl_dodag_t *dodag, ipv6_addr_t *parent, uint16_t parent_ran
 
     start_trickle(my_dodag->dio_min, my_dodag->dio_interval_doubling, my_dodag->dio_redundancy);
     delay_dao();
-
     printf("Calculated rank to %u (based on parent's rank %u)\n" , my_dodag->my_rank, parent_rank);
 
     //printf("done (rank: %u)\n", my_dodag->my_rank);
