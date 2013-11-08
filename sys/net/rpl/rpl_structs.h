@@ -127,13 +127,13 @@
 
 
 #define ICMP_CODE_TVO				0x04 // trail code
-#define ICMP_CODE_TVO_ACK           0x05
+#define ICMP_CODE_TVO_ACK           0x05 // trail tvo ack
 #define TVO_BASE_LEN                27 // trail tvo 26 + 48 byte signature
 #define TVO_ACK_LEN                  3 // trail tvo
 #define TVO_LOCAL_BUFFER_LEN        10 //trail: for TVO ACK keep TVOs
 #define DEFAULT_WAIT_FOR_TVO_ACK     3 // trail TVO
 #define LONG_WAIT_FOR_TVO_ACK  1000000 // trail TVO
-#define TEST_WAIT_FOR_TVO_ACK        10 // trail TVO
+#define TEST_WAIT_FOR_TVO_ACK        100 // trail TVO
 #define TVO_SEND_RETRIES             3 // trail TVO
 
 
@@ -170,12 +170,12 @@ struct __attribute__((packed)) rpl_tvo_local_t{
   //  signature_t signature;
 };
 
-/* DODAG Configuration-Option (RFC 6550 Fig. 24) */
+// trail signature
 typedef struct __attribute__((packed)) {
 	uint8_t uint8[1];
 } rpl_tvo_signature_t;
 
-//trail tvo-ack
+// trail tvo-ack
 struct __attribute__((packed)) rpl_tvo_ack_t{
     uint8_t rpl_instanceid;
     uint8_t tvo_seq;
@@ -340,6 +340,7 @@ typedef struct {
 
 } rpl_routing_entry_t;
 
+// trail temp dodag (for delayed joining)
 typedef struct rpl_dodag_trail_t {
     rpl_instance_t *instance;
     ipv6_addr_t dodag_id;
@@ -366,6 +367,8 @@ typedef struct rpl_dodag_trail_t {
     uint16_t parent_rank;
     uint8_t parent_dtsn;
     ipv6_addr_t parent_addr;
+    ipv6_addr_t my_preferred_parent_addr;
+    uint8_t instance_id;
 }rpl_dodag_trail_t;
 
 #endif

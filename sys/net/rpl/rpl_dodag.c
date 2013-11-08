@@ -159,6 +159,27 @@ bool rpl_equal_id(ipv6_addr_t *id1, ipv6_addr_t *id2)
 
 }
 
+//trail (test) print parents)
+void rpl_print_parents(void)
+{
+    rpl_parent_t *parent;
+    rpl_parent_t *end;
+
+    printf("---------------------------\n");
+    printf("PARENTS\n");
+    printf("---------------------------\n");
+
+    for (parent = &parents[0], end = parents + RPL_MAX_PARENTS; parent < end; parent++) {
+        if (parent->used == 0) {
+        	printf("*UNUSED*   ID: %u, rank: %u, lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
+        } else{
+        	printf("*USED* ID: %u, rank: %u, lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
+        }
+    }
+    printf("--------------\n");
+}
+
+
 rpl_parent_t *rpl_new_parent(rpl_dodag_t *dodag, ipv6_addr_t *address, uint16_t rank)
 {
     rpl_parent_t *parent;
