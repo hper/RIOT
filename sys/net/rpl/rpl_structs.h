@@ -367,7 +367,7 @@ typedef struct rpl_dodag_trail_t {
     uint16_t parent_rank;
     uint8_t parent_dtsn;
     ipv6_addr_t parent_addr;
-    ipv6_addr_t my_preferred_parent_addr;
+//    ipv6_addr_t my_preferred_parent_addr;
     uint8_t instance_id;
 }rpl_dodag_trail_t;
 
