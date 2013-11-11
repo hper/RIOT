@@ -47,6 +47,10 @@ void rpl_tvo_sign_data(void); //trail
 void forward_rpl_tvo(ipv6_addr_t *destination); //trail
 uint32_t global_zero_timestamp; //trail
 void join_dodag(rpl_dodag_t * dio_dodag, ipv6_addr_t * src_addr, uint16_t parent_rank, uint8_t parent_dtsn); // trail
+uint8_t include_parent_into_trail_buffer(void); //trail
+uint8_t get_parent_from_trail_buffer(ipv6_addr_t * src_addr); // trail
+uint8_t is_parent_verified(ipv6_addr_t * src_addr, uint16_t dio_rank); //trail
+
 
 void rpl_process(void);
 void recv_rpl_dio(void);

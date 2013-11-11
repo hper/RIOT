@@ -32,25 +32,19 @@
 #include "sixlowpan/icmp.h"
 
 
-/*
- * trail variables for experiments
- */
-uint16_t global_tvo_counter = 1;
-uint16_t global_loss_tvo_counter = 0;
-uint16_t global_success_tvo_counter = 1;
-uint16_t global_loss_up_tvo_counter = 0;
-uint16_t global_tvo_up_counter = 1;
-uint16_t global_loss_down_tvo_counter = 0;
-uint16_t global_tvo_down_counter = 1;
-uint32_t global_timestamp_tvo_process = 0;
-uint32_t global_timestamp_last_DIO = 0;
+uint16_t global_tvo_counter = 1; // trail
 
 rpl_dodag_trail_t trail_temp_dodag; // trail
-uint8_t tvo_sequence_number = 0;
-uint8_t tvo_pending = 1; // trail: defines if a verification is pending
-uint8_t tvo_parent_verified = 0; // trail: defines if a verification is pending
+rpl_dodag_trail_t trail_parent_buffer[RPL_MAX_PARENTS]; //trail: buffer parents when receiving DIOs
+
+uint8_t tvo_sequence_number = 0; // trail
+//uint8_t tvo_pending = 1; // trail: defines if a verification is pending
+//uint8_t tvo_parent_verified = 1; // trail: defines if a verification is pending
 uint8_t do_trail = 0; // trail: enables / disables trail on startup
-//struct rpl_tvo_local_t tvo_resend; //trail
+uint8_t attacker = 0; // trail
+uint16_t attacker_rank = 0; // trail
+
+
 struct rpl_tvo_local_t tvo_local_buffer[TVO_LOCAL_BUFFER_LEN]; //trail
 uint8_t tvo_local_flags[TVO_LOCAL_BUFFER_LEN]; //trail
 
@@ -322,6 +316,14 @@ void rpl_init_root(void)
     start_trickle(dodag->dio_min, dodag->dio_interval_doubling, dodag->dio_redundancy);
     DEBUG("ROOT INIT FINISHED\n");
 
+}
+
+void change_rank(uint16_t new_rank){
+	 rpl_dodag_t *mydodag;
+	 mydodag = rpl_get_my_dodag();
+
+	 mydodag->my_rank = new_rank;
+	 mydodag->min_rank = new_rank;
 }
 
 
@@ -652,20 +654,16 @@ void send_TVO_ACK(ipv6_addr_t *destination, uint8_t sequence_number)
 //trail tvo init
 struct rpl_tvo_t * rpl_tvo_init(struct rpl_tvo_t * tvo){
 
-	printf("1\n");
 	ipv6_addr_t ll_address;
 	ipv6_addr_t my_address;
 	ipv6_addr_set_link_local_prefix(&ll_address);
 	ipv6_iface_get_best_src_addr(&my_address, &ll_address);
-	printf("2\n");
     rpl_dodag_t * my_dodag = rpl_get_my_dodag();
     timex_t now;
     vtimer_now(&now);
 	tvo->nonce = now.microseconds;
-	printf("3\n");
 	tvo->rank = 0;
 	tvo->rpl_instanceid = 99;//my_dodag->instance->id;
-	printf("4\n");
 /*	int size = sizeof((tvo->signature.uint8) );
 //	size = size / 4;
 	for(int i=0;i<size;i++){
@@ -678,14 +676,12 @@ struct rpl_tvo_t * rpl_tvo_init(struct rpl_tvo_t * tvo){
 
 	tvo->s_flag = 0;
 	tvo->src_addr = my_address;
-	printf("5\n");
 	//TODO uncomment for source routing
 //	tvo->srh_list[0].addr = my_address;
 //	tvo->srh_list_size = 1;
 	tvo->tvo_seq = global_tvo_counter + 100;
 	global_tvo_counter++;
 	tvo->version_number = 66;//my_dodag->version;
-	printf("6\n");
 	return &tvo;
 }
 
@@ -720,6 +716,14 @@ struct rpl_tvo_t * rpl_tvo_init_2(struct rpl_tvo_t * tvo, uint8_t instance, uint
 void start_with_trail(void){
 	do_trail = 1;
 	printf("TRAIL enabled\n");
+}
+
+// trail auto send
+void start_as_attacker(uint16_t rank){
+	attacker = 1;
+	attacker_rank = rank;
+	rpl_set_attacker(rank);
+	printf("Attacker enabled\n");
 }
 
 // trail auto send
@@ -847,8 +851,6 @@ void rpl_process(void)
 
         mutex_lock(&rpl_recv_mutex);
 
-        printf(" ############## received a message .... ################# \n");
-
         switch (*code) {
             case (ICMP_CODE_DIS): {
                 recv_rpl_dis();
@@ -901,7 +903,6 @@ void recv_rpl_tvo(void){
 	ipv6_addr_set_link_local_prefix(&ll_address);
 	ipv6_iface_get_best_src_addr(&my_address, &ll_address);
 
-	uint32_t timestamp;// = vtimer_now().microseconds;
 	ipv6_addr_t * next_hop;
 	ipv6_buf = get_rpl_ipv6_buf();
 	rpl_tvo_buf = get_rpl_tvo_buf();
@@ -938,93 +939,64 @@ void recv_rpl_tvo(void){
 	if(rpl_tvo_buf->s_flag){ //response
 		if(rpl_equal_id(&rpl_tvo_buf->src_addr, &my_address)){
 
-		//am I the source?
+			//am I the source?
 			printf("*TVO origin* checking signature ... ");
 
-			if(rpl_tvo_signature_buf->uint8[0] != 0){ //TODO any signture-dummy is OK
-		/*
-		 * REQUIRED FOR EXPERIMENTS: MASTER
-		        timex_t now;
-			    vtimer_now(&now);
-				timestamp = now.microseconds;
+			uint8_t trail_index;
+			trail_index = get_parent_from_trail_buffer(&(ipv6_buf->srcaddr));
+			if(trail_index == 255){
+				printf("ERROR: parent is not in list -> something is wrong... \n");
+				return;
+			}
 
-				uint16_t tvo_counter_difference = rpl_tvo_buf->tvo_seq - global_success_tvo_counter;
-				while(global_success_tvo_counter < rpl_tvo_buf->tvo_seq){
-					global_loss_tvo_counter++;
-			//		printf("%u 0 0 %u yyy 1 0 0 \n",global_success_tvo_counter, global_loss_tvo_counter);
-					global_success_tvo_counter++;
-				}
-				////printf("%u %u %u ",rpl_tvo_buf->tvo_seq, ts_diff,global_loss_tvo_counter);
-			//	printf("%u %u %u %u yyy 1 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce ,global_loss_tvo_counter);
-				global_success_tvo_counter++;
-		*/
+			if(rpl_tvo_signature_buf->uint8[0] != 0){ //TODO any signature-dummy is OK
 				printf("**valid**\n");
 
-				if(my_dodag == NULL){
-					//finish joining
+		//		if(my_dodag == NULL){
+
+					//finish joining/update
 					rpl_dodag_t dio_dodag;
-					memcpy(&dio_dodag, &trail_temp_dodag, sizeof(dio_dodag));
-					dio_dodag.instance = rpl_get_instance(trail_temp_dodag.instance_id);
+					memcpy(&dio_dodag, &trail_parent_buffer[trail_index], sizeof(dio_dodag));
+					dio_dodag.instance = rpl_get_instance(trail_parent_buffer[trail_index].instance_id);
+					if(dio_dodag.instance == NULL){
+						printf("\n(TEST DEBUG) dio_dodag.instance is NULL! .. trail_buf id: %u\n", trail_parent_buffer[trail_index].instance_id);
+					}
+					join_dodag(&dio_dodag, &trail_parent_buffer[trail_index].parent_addr, trail_parent_buffer[trail_index].parent_rank, trail_parent_buffer[trail_index].parent_dtsn);
 
-					printf("JOINING IN TRAIL: trail_temp_dodag inst: %u / dio_dodag.instance.id: %u\n\n",trail_temp_dodag.instance_id, dio_dodag.instance->id);
+					trail_parent_buffer[trail_index].verified = 1;
+					trail_parent_buffer[trail_index].pending = 0;
+//				}
 
-					join_dodag(&dio_dodag, &trail_temp_dodag.parent_addr, trail_temp_dodag.parent_rank, trail_temp_dodag.parent_dtsn);
-				}
-				tvo_pending = 1;
-				tvo_parent_verified = 1;
 				return;
 			}
 			else{
 				printf(" **invalid**\n");
-				tvo_pending = 1; // use trail again, if new DIO from new parent received
+				trail_parent_buffer[trail_index].verified = 0;
+				trail_parent_buffer[trail_index].pending = 0;
 				return;
 			}
 		}
 		else{
 			/*
-			 * COUNTER Received tvo on way back
-			 * TVO_seq travel_time msg_loss
+			 * Received tvo on way back
 			 */
-		/*
-		 *   REQUIRED FOR EXPERIMENTS: MASTER
-		      timex_t now;
-              vtimer_now(&now);
-              timestamp = now.microseconds;
-
-			uint16_t tvo_counter_difference = rpl_tvo_buf->tvo_seq - global_tvo_down_counter;
-			while(global_tvo_down_counter < rpl_tvo_buf->tvo_seq){
-		//		printf("%u 0 0 %u xxx 1 0 0 \n",global_tvo_down_counter, global_loss_down_tvo_counter);
-				global_loss_down_tvo_counter++;
-				global_tvo_down_counter++;
-			}
-	   //     printf("%u %u %u %u xxx 1 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce,global_loss_down_tvo_counter);
-			global_tvo_down_counter++;
-		*/
-
 			next_hop = rpl_get_next_hop(&rpl_tvo_buf->src_addr);
 		}
 	}
 	else{
 		/*
-		 * counter received tvo on way to root
+		 * received tvo on way to root
 		 */
-		  timex_t now;
-          vtimer_now(&now);
-          timestamp = now.microseconds;
 
+		// delete first in case a better entry is available
+		rpl_del_routing_entry(&rpl_tvo_buf->src_addr);
+		rpl_del_routing_entry(&ipv6_buf->srcaddr);
 
-		uint16_t tvo_counter_difference = rpl_tvo_buf->tvo_seq - global_tvo_up_counter;
-		while(global_tvo_up_counter < rpl_tvo_buf->tvo_seq){
-			global_loss_up_tvo_counter++;
-		//	printf("%u 0 0 %u xxx 0 0 0\n",global_tvo_up_counter, global_loss_up_tvo_counter);
-			global_tvo_up_counter++;
-		}
-	//	printf("%u %u %u %u xxx 0 ",rpl_tvo_buf->tvo_seq, timestamp, rpl_tvo_buf->nonce, global_loss_up_tvo_counter);
-		global_tvo_up_counter++;
-
-		//add downward routing entry to send TVO back
+		//add downward routing entry to send TVO back to source
 		rpl_add_routing_entry(&rpl_tvo_buf->src_addr, &ipv6_buf->srcaddr, 1000);
+		//add downward routing entry for next hop (one-hop neighbor)
 		rpl_add_routing_entry(&ipv6_buf->srcaddr, &ipv6_buf->srcaddr, 1000);
+
 
 		//TVO is a request: on the way to the root
 		//am I tested? (rank == 0)
@@ -1034,33 +1006,25 @@ void recv_rpl_tvo(void){
 			rpl_tvo_buf->rank = my_dodag->my_rank; //TODO memcpy
 		}
 		else if(my_dodag == NULL){
-			printf("Not in network, yet - dropping TVO\n");
+			printf("** Not in network, yet - dropping TVO **\n");
 			return;
 		}
 		else if(rpl_tvo_buf->rank <= my_dodag->my_rank) {
 			// not tested -> is rank OK?
 			// not OK -> DROP
 			//printf("(recv_rpl_tvo in rpl) RANK VIOLATION: received rank: %u - my rank: %u --> MSG IS DROPPED\n", rpl_tvo_buf->rank, my_dodag->my_rank);
-			printf("TVO contains invalid rank: %u\n", rpl_tvo_buf->rank);
+			printf("** TVO contains invalid rank: %u **\n", rpl_tvo_buf->rank);
 			return;
 		}
 		//rank OK, NOT tested -> continue
 		// am I root?
 		if(i_am_root){
 
-			//rpl_tvo_buf->signature.uint8[size-1] = 123; //TODO function
-			//printf("\n(TEST DEBUG) signature at %u: %u\n\n",size-1, rpl_tvo_buf->signature.uint8[size-1]);
-
-			//rpl_tvo_signature_t signature;
-			//signature->uint8[0] = 123;
-			//rpl_tvo_signature_buf = get_rpl_tvo_signature_buf(sizeof(rpl_tvo_signature_t));
 			rpl_tvo_signature_buf = get_tvo_signature_buf(TVO_BASE_LEN);
 			memset(rpl_tvo_signature_buf, 0, sizeof(*rpl_tvo_signature_buf));
 			printf("Signing TVO ... ");
 			rpl_tvo_signature_buf->uint8[0] = 123;
 			printf("done\n");
-	//		printf("(TEST DEBUG) signature set by root: %u\n\n",rpl_tvo_signature_buf->uint8[0]);
-
 
 			rpl_tvo_buf->s_flag = 1;
 			next_hop = rpl_get_next_hop(&rpl_tvo_buf->src_addr);
@@ -1141,12 +1105,44 @@ void recv_rpl_dio(void)
     	  myRank = mydodag->my_rank;
     	  if(rpl_dio_buf->rank >= myRank){
     		  printf("received DIO (Rank: %u / Mine: %u / Inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
-    		  printf(" ---> SHOULD BE ignoring DIO due to greater/equal rank \n");
-    		  //return;
+    		  printf(" ---> ignoring DIO due to greater/equal rank \n");
+    		  return;
     	  }
       }
 
     printf("received DIO (Rank: %u / Mine: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank, rpl_dio_buf->rpl_instanceid,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+
+    uint8_t trail_index;
+    if(do_trail){
+
+
+		//check if node in Routing table with *that* rank
+		if(is_parent_verified(&(ipv6_buf->srcaddr), rpl_dio_buf->rank)){
+			trail_index = get_parent_from_trail_buffer(&(ipv6_buf->srcaddr));
+			//set parent "verified" in trail_parent_buffer
+			if(trail_index == 255){
+				printf("ERROR: parent is not in list, but verified -> something is wrong... \n");
+				return;
+			}
+			trail_parent_buffer[trail_index].verified = 1;
+			trail_parent_buffer[trail_index].pending = 0;
+		} else {
+			trail_index = get_parent_from_trail_buffer(&(ipv6_buf->srcaddr));
+			if(trail_index == 255){
+				trail_index = include_parent_into_trail_buffer();
+				if(trail_index == 255){
+					printf("ERROR: trail buffer is full ... \n");
+					return;
+				}
+				trail_parent_buffer[trail_index].verified = 0;
+				trail_parent_buffer[trail_index].pending = 1;
+				printf("set TRAIL buffer at %u to verified: %u and pending: %u\n",trail_index,trail_parent_buffer[trail_index].verified, trail_parent_buffer[trail_index].pending);
+			}
+
+			//if pending == 0 -> return
+
+		}
+    }
 
     rpl_instance_t *dio_inst = rpl_get_instance(rpl_dio_buf->rpl_instanceid);
     rpl_instance_t *my_inst = rpl_get_my_instance();
@@ -1154,20 +1150,19 @@ void recv_rpl_dio(void)
     if (dio_inst == NULL) {
         if (my_inst != NULL) {
             /* already part of a DODAG -> impossible to join other instance */
-        	printf("1\n");
+        	printf("dio_inst == NULL && my_inst != NULL -> ALREADY IN DODDAG, RETURN\n");
             return;
         }
 
 
-        dio_inst = rpl_create_new_instance(rpl_dio_buf->rpl_instanceid);//rpl_new_instance(rpl_dio_buf->rpl_instanceid);
-        printf(" CREATED NEW INSTANCE WITH ID %u \n",dio_inst->id);
+        dio_inst = rpl_new_instance(rpl_dio_buf->rpl_instanceid);//rpl_new_instance(rpl_dio_buf->rpl_instanceid);
 
         if (dio_inst == NULL) {
-        	printf("2\n");
+        	printf("dio_inst == NULL && my_inst == NULL -> dio_inst still NULL, RETURN\n");
             return;
         }
     }
-    else if (my_inst->id != dio_inst->id) {
+    else if (my_inst != NULL && my_inst->id != dio_inst->id) {
         /* TODO: Add support support for several instances.  */
 
         /* At the moment, nodes can only join one instance, this is
@@ -1175,7 +1170,7 @@ void recv_rpl_dio(void)
         * Instances cannot be switched later on.  */
 
         DEBUG("Ignoring instance - we are %d and got %d\n", my_inst->id, dio_inst->id);
-        printf("3\n");
+        printf("Ignoring instance - we are %d and got %d\n", my_inst->id, dio_inst->id);
         return;
     }
 
@@ -1190,18 +1185,16 @@ void recv_rpl_dio(void)
     dio_dodag.instance = dio_inst;
     uint8_t has_dodag_conf_opt = 0;
 
-    memset(&trail_temp_dodag, 0, sizeof(trail_temp_dodag));
-    memcpy(&trail_temp_dodag.dodag_id, &rpl_dio_buf->dodagid, sizeof(dio_dodag.dodag_id));
-    trail_temp_dodag.dtsn = rpl_dio_buf->dtsn;
-    trail_temp_dodag.mop = ((rpl_dio_buf->g_mop_prf >> RPL_MOP_SHIFT) & RPL_SHIFTED_MOP_MASK);
-    trail_temp_dodag.grounded = rpl_dio_buf->g_mop_prf >> RPL_GROUNDED_SHIFT;
-    trail_temp_dodag.prf = (rpl_dio_buf->g_mop_prf & RPL_PRF_MASK);
-    trail_temp_dodag.version = rpl_dio_buf->version_number;
-    trail_temp_dodag.instance = dio_inst;
-    trail_temp_dodag.instance_id = rpl_dio_buf->rpl_instanceid;
-
-    printf(" COPY ID TO DIO_DODAG: %u --> original: %u\n",dio_dodag.instance->id, dio_inst->id);
-
+    if(do_trail){
+		memcpy(&trail_parent_buffer[trail_index].dodag_id, &rpl_dio_buf->dodagid, sizeof(dio_dodag.dodag_id));
+		trail_parent_buffer[trail_index].dtsn = rpl_dio_buf->dtsn;
+		trail_parent_buffer[trail_index].mop = ((rpl_dio_buf->g_mop_prf >> RPL_MOP_SHIFT) & RPL_SHIFTED_MOP_MASK);
+		trail_parent_buffer[trail_index].grounded = rpl_dio_buf->g_mop_prf >> RPL_GROUNDED_SHIFT;
+		trail_parent_buffer[trail_index].prf = (rpl_dio_buf->g_mop_prf & RPL_PRF_MASK);
+		trail_parent_buffer[trail_index].version = rpl_dio_buf->version_number;
+		trail_parent_buffer[trail_index].instance = dio_inst;
+		trail_parent_buffer[trail_index].instance_id = rpl_dio_buf->rpl_instanceid;
+    }
     /* Parse until all options are consumed.
      * ipv6_buf->length contains the packet length minus ipv6 and
      * icmpv6 header, so only ICMPV6_HDR_LEN remains to be
@@ -1250,15 +1243,16 @@ void recv_rpl_dio(void)
                 dio_dodag.of = (struct rpl_of_t *) rpl_get_of_for_ocp(rpl_opt_dodag_conf_buf->ocp);
                 len += RPL_OPT_DODAG_CONF_LEN + 2;
 
-                trail_temp_dodag.dio_interval_doubling = rpl_opt_dodag_conf_buf->DIOIntDoubl;
-                trail_temp_dodag.dio_min = rpl_opt_dodag_conf_buf->DIOIntMin;
-                trail_temp_dodag.dio_redundancy = rpl_opt_dodag_conf_buf->DIORedun;
-                trail_temp_dodag.maxrankincrease =	rpl_opt_dodag_conf_buf->MaxRankIncrease;
-                trail_temp_dodag.minhoprankincrease = rpl_opt_dodag_conf_buf->MinHopRankIncrease;
-                trail_temp_dodag.default_lifetime = rpl_opt_dodag_conf_buf->default_lifetime;
-                trail_temp_dodag.lifetime_unit = rpl_opt_dodag_conf_buf->lifetime_unit;
-                trail_temp_dodag.of = (struct rpl_of_t *) rpl_get_of_for_ocp(rpl_opt_dodag_conf_buf->ocp);
-
+                if(do_trail){
+					trail_parent_buffer[trail_index].dio_interval_doubling = rpl_opt_dodag_conf_buf->DIOIntDoubl;
+					trail_parent_buffer[trail_index].dio_min = rpl_opt_dodag_conf_buf->DIOIntMin;
+					trail_parent_buffer[trail_index].dio_redundancy = rpl_opt_dodag_conf_buf->DIORedun;
+					trail_parent_buffer[trail_index].maxrankincrease =	rpl_opt_dodag_conf_buf->MaxRankIncrease;
+					trail_parent_buffer[trail_index].minhoprankincrease = rpl_opt_dodag_conf_buf->MinHopRankIncrease;
+					trail_parent_buffer[trail_index].default_lifetime = rpl_opt_dodag_conf_buf->default_lifetime;
+					trail_parent_buffer[trail_index].lifetime_unit = rpl_opt_dodag_conf_buf->lifetime_unit;
+					trail_parent_buffer[trail_index].of = (struct rpl_of_t *) rpl_get_of_for_ocp(rpl_opt_dodag_conf_buf->ocp);
+                }
                 break;
             }
 
@@ -1303,59 +1297,9 @@ void recv_rpl_dio(void)
             return;
         }
 
+
         if (rpl_dio_buf->rank != INFINITE_RANK) {
 
-        	if(tvo_pending && do_trail){ //do_trail enables TRAIL
-				tvo_pending = 0;
-        		printf("Parent's rank %u unverified .. initializing TRAIL\n", rpl_dio_buf->rank);
-        		struct rpl_tvo_t tvo;
-        		printf("TVO created\n");
-        		rpl_tvo_init_2(&tvo, rpl_dio_buf->rpl_instanceid, rpl_dio_buf->version_number);
-        		printf("TVO initialized\n");
-
-        		ipv6_addr_t next_hop;
-        		memcpy(&next_hop, &(ipv6_buf->srcaddr), sizeof(next_hop));
-        		rpl_add_routing_entry(&ipv6_buf->srcaddr, &ipv6_buf->srcaddr, 1000);
-        	//	ipv6_addr_set_all_nodes_addr(&next_hop);
-
-        		//////////
-        		struct rpl_tvo_local_t tvo_inst;
-        		// copy tvo to local_tvo
-        		memset(&tvo_inst, 0, sizeof(tvo_inst));
-        		memcpy(&tvo_inst, &tvo, sizeof(tvo_inst));
-        		// assign his_counter (tvo.seqnr) to local tvo.his_seq_num
-        		tvo_inst.his_tvo_seq = 0;
-        		tvo_inst.number_resend = 0;
-        		// give local tvo a timestamp
-        		timex_t now;
-        		vtimer_now(&now);
-        		tvo_inst.timestamp_received = now.microseconds;
-        		//save destination / source
-        		memcpy(&(tvo_inst.dst_addr), &next_hop, sizeof(tvo_inst.dst_addr));
-        		// save_tvo_locally(local_tvo);
-        		save_tvo_locally(&tvo_inst);
-        		/////////
-
-        		/*memcpy(&trail_temp_dodag, &dio_dodag,sizeof(dio_dodag));
-        		trail_temp_dodag.instance_id = dio_dodag.instance->id;
-        		trail_temp_dodag.my_preferred_parent_addr = dio_dodag.my_preferred_parent->addr;
-
-        		trail_temp_dodag.parent_rank = rpl_dio_buf->rank;
-        		trail_temp_dodag.parent_dtsn = rpl_dio_buf->dtsn;
-        		trail_temp_dodag.parent_addr = ipv6_buf->srcaddr;*/
-
-        		printf("\n\n trail_temp_dodoag %u / dio_dodag %u , dio_inst %u\n\n",trail_temp_dodag.instance_id, dio_dodag.instance->id, dio_inst->id);
-        		printf(" RE-printf stuff from above: %u --> original: %u\n",dio_dodag.instance->id, dio_inst->id);
-        		printf("\n\n trail_temp_dodoag %u / dio_dodag %u , dio_inst %u\n\n",trail_temp_dodag.instance_id, dio_dodag.instance->id, dio_inst->id);
-        		printf(" RE-printf stuff from above: %u --> original: %u\n",dio_dodag.instance->id, dio_inst->id);
-        		printf(" RE-printf stuff from above: %u --> original: %u\n",dio_dodag.instance->id, dio_inst->id);
-        		printf(" RE-printf stuff from above: %u --> original: %u\n",dio_dodag.instance->id, dio_inst->id);
-
-        		send_TVO(&next_hop, &tvo, NULL);
-        		short_delay_tvo(DEFAULT_WAIT_FOR_TVO_ACK);
-
-        		return;
-        	}
         }
         else {
             DEBUG("Cannot access DODAG because of DIO with infinite rank\n");
@@ -1363,18 +1307,105 @@ void recv_rpl_dio(void)
         }
     }
 
-    if(tvo_parent_verified == 1){
-    	join_dodag(&dio_dodag, &ipv6_buf->srcaddr, rpl_dio_buf->rank, rpl_dio_buf->dtsn);
-    } else {
-    	return;
-    }
+    //if(tvo_pending && do_trail){ //do_trail enables TRAIL
+    if(trail_parent_buffer[trail_index].verified == 0 && trail_parent_buffer[trail_index].pending == 1 && do_trail){
 
+    	trail_parent_buffer[trail_index].pending = 0;
+
+		printf("Parent's rank %u unverified .. initializing TRAIL\n", rpl_dio_buf->rank);
+		struct rpl_tvo_t tvo;
+		printf("TVO created\n");
+		rpl_tvo_init_2(&tvo, rpl_dio_buf->rpl_instanceid, rpl_dio_buf->version_number);
+		printf("TVO initialized\n");
+
+		ipv6_addr_t next_hop;
+		memcpy(&next_hop, &(ipv6_buf->srcaddr), sizeof(next_hop));
+		rpl_add_routing_entry(&ipv6_buf->srcaddr, &ipv6_buf->srcaddr, 1000);
+		//	ipv6_addr_set_all_nodes_addr(&next_hop);
+
+		//////////
+		struct rpl_tvo_local_t tvo_inst;
+		// copy tvo to local_tvo
+		memset(&tvo_inst, 0, sizeof(tvo_inst));
+		memcpy(&tvo_inst, &tvo, sizeof(tvo_inst));
+		// assign his_counter (tvo.seqnr) to local tvo.his_seq_num
+		tvo_inst.his_tvo_seq = 0;
+		tvo_inst.number_resend = 0;
+		// give local tvo a timestamp
+		timex_t now;
+		vtimer_now(&now);
+		tvo_inst.timestamp_received = now.microseconds;
+		//save destination / source
+		memcpy(&(tvo_inst.dst_addr), &next_hop, sizeof(tvo_inst.dst_addr));
+		// save_tvo_locally(local_tvo);
+		save_tvo_locally(&tvo_inst);
+		/////////
+
+		trail_parent_buffer[trail_index].parent_addr = ipv6_buf->srcaddr;
+		trail_parent_buffer[trail_index].parent_rank = rpl_dio_buf->rank;
+		trail_parent_buffer[trail_index].parent_dtsn = rpl_dio_buf->dtsn;
+
+		send_TVO(&next_hop, &tvo, NULL);
+		short_delay_tvo(DEFAULT_WAIT_FOR_TVO_ACK);
+
+		return;
+    }
+    else if(trail_parent_buffer[trail_index].verified == 1 || !do_trail){
+    	join_dodag(&dio_dodag, &ipv6_buf->srcaddr, rpl_dio_buf->rank, rpl_dio_buf->dtsn);
+    }
+}
+
+
+uint8_t include_parent_into_trail_buffer(void){
+	uint8_t i;
+
+	for(i=0;i<sizeof(trail_parent_buffer);i++){
+		if(trail_parent_buffer[i].in_progress != 1){
+			memset(&trail_parent_buffer[i], 0, sizeof(trail_temp_dodag));
+			trail_parent_buffer[i].in_progress = 1;
+			printf("Including parent into TRAIL buffer at %u\n",i);
+			return i;
+		}
+	}
+	return 255;
+}
+
+uint8_t get_parent_from_trail_buffer(ipv6_addr_t * src_addr){
+	uint8_t i;
+
+	for(i=0;i<RPL_MAX_PARENTS;i++){
+		if(trail_parent_buffer[i].parent_addr.uint8[15] == src_addr->uint8[15] && trail_parent_buffer[i].in_progress == 1){
+			printf("Returning parent from TRAIL buffer at %u\n",i);
+			return i;
+		}
+	}
+	printf("Parent not in TRAIL buffer\n");
+	return 255;
+}
+
+uint8_t is_parent_verified(ipv6_addr_t * src_addr, uint16_t dio_rank){
+
+	rpl_parent_t *parent;
+	parent = rpl_find_parent(src_addr);
+
+	if(parent == NULL){
+		printf("Parent not yet in routing table - return false\n");
+		return 0;
+	}
+	else if (parent->rank != dio_rank) {
+		// TODO may have to delete parent first (?)
+		printf("parent must have changed his rank - return false\n");
+		return 0;
+	}
+	else{
+		printf("parent is in routing table with same rank - return true\n");
+		return 1;
+	}
 }
 
 void join_dodag(rpl_dodag_t * dio_dodag, ipv6_addr_t * src_addr, uint16_t parent_rank, uint8_t parent_dtsn){
 
 	rpl_dodag_t *my_dodag = rpl_get_my_dodag();
-	printf("4\n");
 	if(my_dodag == NULL){
 		DEBUG("Will join DODAG: ");
 
@@ -1389,7 +1420,6 @@ void join_dodag(rpl_dodag_t * dio_dodag, ipv6_addr_t * src_addr, uint16_t parent
 	}
 	if (rpl_equal_id(&my_dodag->dodag_id, &dio_dodag->dodag_id)) {
 	        /* "our" DODAG */
-		printf("5\n");
 	        if (RPL_COUNTER_GREATER_THAN(dio_dodag->version, my_dodag->version)) {
 	            if (my_dodag->my_rank == ROOT_RANK) {
 	                DEBUG("[Warning] Inconsistent Dodag Version\n");
@@ -1425,7 +1455,6 @@ void join_dodag(rpl_dodag_t * dio_dodag, ipv6_addr_t * src_addr, uint16_t parent
 	    }
 
 	    /*********************  Parent Handling *********************/
-	    printf("6\n");
 	    rpl_parent_t *parent;
 	    parent = rpl_find_parent(src_addr);
 
@@ -1740,8 +1769,10 @@ void rpl_add_routing_entry(ipv6_addr_t *addr, ipv6_addr_t *next_hop, uint16_t li
 
 void rpl_del_routing_entry(ipv6_addr_t *addr)
 {
+	char addr_str[IPV6_MAX_ADDR_STR_LEN];
     for (uint8_t i = 0; i < RPL_MAX_ROUTING_ENTRIES; i++) {
         if (routing_table[i].used && rpl_equal_id(&routing_table[i].address, addr)) {
+        	printf("Delete downward route to %s (IPv6)\n", ipv6_addr_to_str(addr_str, addr));
             memset(&routing_table[i], 0, sizeof(routing_table[i]));
             return;
         }

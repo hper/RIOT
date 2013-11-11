@@ -98,12 +98,12 @@ void init_trickle(void)
         return;
     }
 
-    dao_delay_over_buf  =  calloc(DAO_DELAY_STACKSIZE, sizeof(char));
+ //   dao_delay_over_buf  =  calloc(DAO_DELAY_STACKSIZE, sizeof(char));
 
-    if (dao_delay_over_buf == NULL) {
-        puts("[ERROR] Could not allocate enough memory for interval_over_buf!");
-        return;
-    }
+ //   if (dao_delay_over_buf == NULL) {
+ //       puts("[ERROR] Could not allocate enough memory for interval_over_buf!");
+ //       return;
+ //   }
 
     //trail
     tvo_delay_over_buf  =  calloc(TVO_DELAY_STACKSIZE,sizeof(char));
@@ -121,9 +121,9 @@ void init_trickle(void)
     interval_over_pid = thread_create(interval_over_buf, TRICKLE_INTERVAL_STACKSIZE,
                                       PRIORITY_MAIN - 1, CREATE_STACKTEST,
                                       trickle_interval_over, "trickle_interval_over");
-    dao_delay_over_pid = thread_create(dao_delay_over_buf, DAO_DELAY_STACKSIZE,
-                                       PRIORITY_MAIN - 1, CREATE_STACKTEST,
-                                       dao_delay_over, "dao_delay_over");
+  //  dao_delay_over_pid = thread_create(dao_delay_over_buf, DAO_DELAY_STACKSIZE,
+  //                                     PRIORITY_MAIN - 1, CREATE_STACKTEST,
+  //                                     dao_delay_over, "dao_delay_over");
     rt_timer_over_pid = thread_create(routing_table_buf, RT_STACKSIZE,
                                       PRIORITY_MAIN - 1, CREATE_STACKTEST,
                                       rt_timer_over, "rt_timer_over");

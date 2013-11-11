@@ -133,7 +133,7 @@
 #define TVO_LOCAL_BUFFER_LEN        10 //trail: for TVO ACK keep TVOs
 #define DEFAULT_WAIT_FOR_TVO_ACK     3 // trail TVO
 #define LONG_WAIT_FOR_TVO_ACK  1000000 // trail TVO
-#define TEST_WAIT_FOR_TVO_ACK        100 // trail TVO
+#define TEST_WAIT_FOR_TVO_ACK        10000 // trail TVO
 #define TVO_SEND_RETRIES             3 // trail TVO
 
 
@@ -367,8 +367,10 @@ typedef struct rpl_dodag_trail_t {
     uint16_t parent_rank;
     uint8_t parent_dtsn;
     ipv6_addr_t parent_addr;
-//    ipv6_addr_t my_preferred_parent_addr;
     uint8_t instance_id;
+    uint8_t pending;
+    uint8_t verified;
+    uint8_t in_progress;
 }rpl_dodag_trail_t;
 
 #endif

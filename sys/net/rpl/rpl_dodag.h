@@ -44,5 +44,4 @@ uint16_t rpl_calc_rank(uint16_t abs_rank, uint16_t minhoprankincrease);
 
 rpl_instance_t *rpl_get_instance(uint8_t instanceid); //trail
 void rpl_delete_instance(uint8_t instanceid); //trail
-rpl_instance_t *rpl_create_new_instance(uint8_t instanceid); //trail
 void rpl_print_parents(void); //trail (test)
