@@ -164,6 +164,7 @@ struct __attribute__((packed)) rpl_tvo_local_t{
     ipv6_addr_t src_addr;
     bool s_flag;
     ipv6_addr_t dst_addr;
+    ipv6_addr_t prev_hop_addr;
     uint8_t his_tvo_seq;
     uint32_t timestamp_received;
     uint8_t number_resend;

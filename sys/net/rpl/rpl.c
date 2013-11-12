@@ -388,7 +388,7 @@ void start_as_attacker(uint16_t rank){
 	attacker = 1;
 	attacker_rank = rank;
 	rpl_set_attacker(rank);
-	printf("Attacker enabled\n");
+	printf("Attacker enabled with rank %u\n",rank);
 }
 
 /*
@@ -428,7 +428,7 @@ struct rpl_tvo_local_t * has_tvo_been_received(ipv6_addr_t * source, uint8_t tvo
 
 	for(i=0;i<TVO_LOCAL_BUFFER_LEN;i++)
 	{
-		if(tvo_local_buffer[i].his_tvo_seq == tvo_seq && tvo_local_buffer[i].dst_addr.uint8[15] == source->uint8[15]){
+		if(tvo_local_buffer[i].his_tvo_seq == tvo_seq && tvo_local_buffer[i].prev_hop_addr.uint8[15] == source->uint8[15]){
 			return &tvo_local_buffer[i];
 		}
 	}
@@ -1032,18 +1032,20 @@ void recv_rpl_tvo(void){
 	ipv6_addr_t * next_hop;
 	ipv6_buf = get_rpl_ipv6_buf();
 	rpl_tvo_buf = get_rpl_tvo_buf();
-	send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
+
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
 	printf("received TVO (seq: %u) from %s (IPv6)\n", rpl_tvo_buf->tvo_seq, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
-	 if (rpl_tvo_buf->s_flag) {
+
+	//send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
+
+	if (rpl_tvo_buf->s_flag) {
 	        rpl_opt_buf = get_rpl_opt_buf(TVO_BASE_LEN);
 	        rpl_tvo_signature_buf = get_tvo_signature_buf(TVO_BASE_LEN);
 	 }
 
 	 struct rpl_tvo_local_t * local_tvo = has_tvo_been_received(&ipv6_buf->srcaddr, rpl_tvo_buf->tvo_seq);
 
-	 //send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 
 	 if(local_tvo != NULL) // already received
 	 {
@@ -1056,6 +1058,8 @@ void recv_rpl_tvo(void){
 		  * --> acken und forwarden wäre entkoppelt -> "löschen, da ack erhalten" hat dann nichts mehr mit
 		  *  "sollte die TVO noch acken" zu tun.
 		  */
+		 printf("\n Already received TVO (seq: %u) from %s\n", rpl_tvo_buf->tvo_seq, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+		 send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 		 return;
 	 }
 
@@ -1073,6 +1077,7 @@ void recv_rpl_tvo(void){
 			trail_index = get_parent_from_trail_buffer(&(ipv6_buf->srcaddr));
 			if(trail_index == 255){
 				printf("parent is not in list -> already verified... \n");
+				send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 				return;
 			}
 
@@ -1092,6 +1097,7 @@ void recv_rpl_tvo(void){
 			//	trail_parent_buffer[trail_index].pending = 0;
 				trail_parent_buffer[trail_index].in_progress = 0; // free buffer
 
+				send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 				return;
 			}
 			else{
@@ -1099,6 +1105,8 @@ void recv_rpl_tvo(void){
 			//	trail_parent_buffer[trail_index].verified = 0; // not verfied
 			//	trail_parent_buffer[trail_index].pending = 0;
 				trail_parent_buffer[trail_index].in_progress = 0; //free buffer
+
+				send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 				return;
 			}
 		}
@@ -1133,6 +1141,7 @@ void recv_rpl_tvo(void){
 		}
 		else if(my_dodag == NULL){
 			printf("** Not in network, yet - dropping TVO **\n");
+			send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 			return;
 		}
 		else if(rpl_tvo_buf->rank <= my_dodag->my_rank) {
@@ -1140,6 +1149,7 @@ void recv_rpl_tvo(void){
 			// not OK -> DROP
 			//printf("(recv_rpl_tvo in rpl) RANK VIOLATION: received rank: %u - my rank: %u --> MSG IS DROPPED\n", rpl_tvo_buf->rank, my_dodag->my_rank);
 			printf("** TVO contains invalid rank: %u **\n", rpl_tvo_buf->rank);
+			send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 			return;
 		}
 		//rank OK, NOT tested -> continue
@@ -1178,12 +1188,14 @@ void recv_rpl_tvo(void){
 	vtimer_now(&now);
 	local_tvo->timestamp_received = now.microseconds;
 	//save destination / source
-	// local_tvo->dst_addr = ipv6_buf->srcaddr;
+	local_tvo->prev_hop_addr = ipv6_buf->srcaddr;
+
 	memcpy(&(local_tvo->dst_addr), next_hop, sizeof(local_tvo->dst_addr));
 	// save_tvo_locally(local_tvo);
 	save_tvo_locally(local_tvo);
 	// send ack?
-	//send_TVO_ACK(&(ipv6_buf->srcaddr), local_tvo->his_tvo_seq);
+
+	send_TVO_ACK(&(ipv6_buf->srcaddr), local_tvo->his_tvo_seq);
 
 	send_TVO(next_hop, rpl_tvo_buf, rpl_tvo_signature_buf);
 	delay_tvo(DEFAULT_WAIT_FOR_TVO_ACK);
@@ -1270,10 +1282,19 @@ void recv_rpl_dio(void)
 				//printf("set TRAIL buffer at %u to verified: %u and pending: %u\n",trail_index,trail_parent_buffer[trail_index].verified, trail_parent_buffer[trail_index].pending);
 			}
 			else {
-				// parent in buffer: waiting for tvo: don't send new one.
-				printf("still waiting for verification... ignoring DIO \n");
-				//send_tvo = 0;
-				return;
+
+				//parent possibly chose differnt rank
+				if(rpl_dio_buf->rank != trail_parent_buffer[trail_index].parent_rank){
+					//re-schedule TVO
+					flag_send_TVO = 1;
+				}
+				else {
+					// parent in buffer: waiting for tvo: don't send new one.
+					printf("still waiting for verification... ignoring DIO \n");
+					//send_tvo = 0;
+					return;
+				}
+
 			}
 
 		}
