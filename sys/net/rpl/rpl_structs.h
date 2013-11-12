@@ -368,8 +368,8 @@ typedef struct rpl_dodag_trail_t {
     uint8_t parent_dtsn;
     ipv6_addr_t parent_addr;
     uint8_t instance_id;
-    uint8_t pending;
-    uint8_t verified;
+    //uint8_t pending;
+    //uint8_t verified;
     uint8_t in_progress;
 }rpl_dodag_trail_t;
 

@@ -26,6 +26,7 @@
 
 #define TVO_DELAY_STACKSIZE 3072 // trail
 void tvo_delay_over(void); // trail
+void delay_tvo(uint32_t seconds); //trail
 
 
 void reset_trickletimer(void);

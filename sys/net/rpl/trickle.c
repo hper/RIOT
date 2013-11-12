@@ -38,7 +38,7 @@ timex_t tvo_time; // trail
 vtimer_t tvo_timer; // trail
 uint32_t tvo_resend_seconds; // trail
 bool tvo_ack_received; // trail
-uint8_t tvo_counter; // trail
+//uint8_t tvo_counter; // trail
 struct rpl_tvo_local_t * tvo_resend; //trail
 
 char routing_table_buf[RT_STACKSIZE];
@@ -226,11 +226,11 @@ void tvo_delay_over(void){
                 thread_sleep();
 
                 //if((tvo_ack_received == false) && (tvo_counter < TVO_SEND_RETRIES)){
-                if(tvo_counter < TVO_SEND_RETRIES){
-                        tvo_counter++;
+         //       if(tvo_counter < TVO_SEND_RETRIES){
+ //                       tvo_counter++;
                         rpl_dodag_t * mydodag = rpl_get_my_dodag();
 
-                        /*
+/*
                         struct rpl_tvo_t tvo;
                         //rpl_tvo_init(&tvo);
 
@@ -245,17 +245,18 @@ void tvo_delay_over(void){
                         tvo_time = timex_set(tvo_resend_seconds, 0);
                         vtimer_remove(&tvo_timer);
                         vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
-                }
+    //            }
         //        else if (tvo_ack_received == false){
         //                long_delay_tvo();
         //        }
         }
 }
 
+/*
 //trail
 void received_tvo_ack()
 {
-        printf("\n SETTING TVO_ACK_RECEIVED TO TRUE\n\n");
+    printf("\n SETTING TVO_ACK_RECEIVED TO TRUE\n\n");
     tvo_ack_received = true;
     long_delay_tvo();
 }
@@ -272,18 +273,20 @@ void set_tvo_auto_send(){
                 //delay_tvo();
         }
 }
+*/
 
 //trail
-void short_delay_tvo(uint32_t seconds){
+void delay_tvo(uint32_t seconds){
 	printf("setting new TVO delay to %u seconds\n",seconds);
 	tvo_time = timex_set(seconds,0);
     tvo_resend_seconds = seconds;
-    tvo_counter = 0;
+//    tvo_counter = 0;
     tvo_ack_received = false;
     vtimer_remove(&tvo_timer);
     vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
 }
 
+/*
 //trail
 void delay_tvo(struct rpl_tvo_local_t * tvo){
         tvo_resend = tvo; //trail
@@ -293,7 +296,9 @@ void delay_tvo(struct rpl_tvo_local_t * tvo){
         vtimer_remove(&tvo_timer);
         vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
 }
+*/
 
+/*
 //trail
 void long_delay_tvo(void){
         tvo_time = timex_set(1000000,0);
@@ -302,6 +307,7 @@ void long_delay_tvo(void){
         vtimer_remove(&tvo_timer);
         vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
 }
+*/
 
 void delay_dao(void)
 {
