@@ -17,11 +17,17 @@
 
 #include <vtimer.h>
 #include <thread.h>
+#include "rpl/rpl_structs.h"
 
 #define TRICKLE_TIMER_STACKSIZE 3072
 #define TRICKLE_INTERVAL_STACKSIZE 3072
 #define DAO_DELAY_STACKSIZE 3072
 #define RT_STACKSIZE 512
+
+#define TVO_DELAY_STACKSIZE 3072 // trail
+void tvo_delay_over(void); // trail
+void delay_tvo(uint32_t seconds); //trail
+
 
 void reset_trickletimer(void);
 void init_trickle(void);

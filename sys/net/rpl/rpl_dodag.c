@@ -16,7 +16,6 @@
  */
 
 #include <string.h>
-#include <string.h>
 #include <stdio.h>
 
 #include "rpl_dodag.h"
@@ -26,6 +25,14 @@
 rpl_instance_t instances[RPL_MAX_INSTANCES];
 rpl_dodag_t dodags[RPL_MAX_DODAGS];
 rpl_parent_t parents[RPL_MAX_PARENTS];
+
+uint8_t attacker_dodag = 0; // trail
+uint16_t attacker_dodag_rank = 0; // trail
+
+void rpl_set_attacker(uint16_t rank){
+	attacker_dodag = 1;
+	attacker_dodag_rank = rank;
+}
 
 rpl_instance_t *rpl_new_instance(uint8_t instanceid)
 {
@@ -43,6 +50,7 @@ rpl_instance_t *rpl_new_instance(uint8_t instanceid)
 
     return NULL;
 }
+
 rpl_instance_t *rpl_get_instance(uint8_t instanceid)
 {
     for (int i = 0; i < RPL_MAX_INSTANCES; i++) {
@@ -52,6 +60,18 @@ rpl_instance_t *rpl_get_instance(uint8_t instanceid)
     }
 
     return NULL;
+}
+
+//TRAIL -> clean up
+void rpl_delete_instance(uint8_t instanceid)
+{
+    for (int i = 0; i < RPL_MAX_INSTANCES; i++) {
+        if (instances[i].used && (instances[i].id == instanceid)) {
+            instances[i].used = 0;
+            instances[i].id = 0;
+            instances[i].joined = 0;
+        }
+    }
 }
 
 rpl_instance_t *rpl_get_my_instance()
@@ -137,6 +157,27 @@ bool rpl_equal_id(ipv6_addr_t *id1, ipv6_addr_t *id2)
     return true;
 
 }
+
+//trail (test) print parents)
+void rpl_print_parents(void)
+{
+    rpl_parent_t *parent;
+    rpl_parent_t *end;
+
+    printf("---------------------------\n");
+    printf("PARENTS\n");
+    printf("---------------------------\n");
+
+    for (parent = &parents[0], end = parents + RPL_MAX_PARENTS; parent < end; parent++) {
+        if (parent->used == 0) {
+        	printf("*UNUSED*   ID: %u, rank: %u, lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
+        } else{
+        	printf("*USED* ID: %u, rank: %u, lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
+        }
+    }
+    printf("--------------\n");
+}
+
 
 rpl_parent_t *rpl_new_parent(rpl_dodag_t *dodag, ipv6_addr_t *address, uint16_t rank)
 {
@@ -229,7 +270,8 @@ rpl_parent_t *rpl_find_preferred_parent(void)
                 continue;
             }
             else if (best == NULL) {
-                puts("parent");
+          //      printf("preferred parent chosen: (suffix)0x%x with rank: %d\n",  parents[i].addr.uint8[8], parents[i].rank);
+                //puts("preferred parent found: ");
                 best = &parents[i];
             }
             else {
@@ -288,19 +330,20 @@ void rpl_join_dodag(rpl_dodag_t *dodag, ipv6_addr_t *parent, uint16_t parent_ran
 {
     rpl_dodag_t *my_dodag;
     rpl_parent_t *preferred_parent;
+    if(rpl_get_instance(dodag->instance->id) == NULL){
+    	rpl_new_instance(dodag->instance->id);
+    }
     my_dodag = rpl_new_dodag(dodag->instance->id, &dodag->dodag_id);
 
     if (my_dodag == NULL) {
         return;
     }
-
     preferred_parent = rpl_new_parent(my_dodag, parent, parent_rank);
 
     if (preferred_parent == NULL) {
         rpl_del_dodag(my_dodag);
         return;
     }
-
     my_dodag->instance->joined = 1;
     my_dodag->of = dodag->of;
     my_dodag->mop = dodag->mop;
@@ -318,12 +361,20 @@ void rpl_join_dodag(rpl_dodag_t *dodag, ipv6_addr_t *parent, uint16_t parent_ran
     my_dodag->joined = 1;
     my_dodag->my_preferred_parent = preferred_parent;
     my_dodag->node_status = (uint8_t) NORMAL_NODE;
-    my_dodag->my_rank = dodag->of->calc_rank(preferred_parent, dodag->my_rank);
+    if(attacker_dodag == 0){
+    	my_dodag->my_rank = dodag->of->calc_rank(preferred_parent, dodag->my_rank);
+    }
+    else {
+    	my_dodag->my_rank = attacker_dodag_rank;
+    }
     my_dodag->dao_seq = RPL_COUNTER_INIT;
     my_dodag->min_rank = my_dodag->my_rank;
 
     start_trickle(my_dodag->dio_min, my_dodag->dio_interval_doubling, my_dodag->dio_redundancy);
     delay_dao();
+    printf("Calculated rank to %u (based on parent's rank %u)\n" , my_dodag->my_rank, parent_rank);
+
+    //printf("done (rank: %u)\n", my_dodag->my_rank);
 }
 
 void rpl_global_repair(rpl_dodag_t *dodag, ipv6_addr_t *p_addr, uint16_t rank)
@@ -347,9 +398,15 @@ void rpl_global_repair(rpl_dodag_t *dodag, ipv6_addr_t *p_addr, uint16_t rank)
     }
     else {
         /* Calc new Rank */
-        my_dodag->my_rank = my_dodag->of->calc_rank(my_dodag->my_preferred_parent,
-                            my_dodag->my_rank);
-        my_dodag->min_rank = my_dodag->my_rank;
+    	if(attacker_dodag == 0){
+			my_dodag->my_rank = my_dodag->of->calc_rank(my_dodag->my_preferred_parent,
+								my_dodag->my_rank);
+			my_dodag->min_rank = my_dodag->my_rank;
+    	}
+    	else {
+    		my_dodag->my_rank = attacker_dodag_rank;
+    		my_dodag->min_rank = attacker_dodag_rank;
+    	}
         reset_trickletimer();
         delay_dao();
     }

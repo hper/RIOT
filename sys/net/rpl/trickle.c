@@ -1,3 +1,5 @@
+
+
 /**
  * Trickle implementation
  *
@@ -22,12 +24,23 @@
 #include <math.h>
 #include "inttypes.h"
 #include "trickle.h"
-#include "rpl.h"
+#include "rpl/rpl.h"
 
 //TODO in pointer umwandeln, speicher mit malloc holen
 char *timer_over_buf;
 char *interval_over_buf;
 char *dao_delay_over_buf;
+
+char * tvo_delay_over_buf; // trail
+int tvo_delay_over_pid; // trail
+bool tvo_auto_send = false; // trail
+timex_t tvo_time; // trail
+vtimer_t tvo_timer; // trail
+uint32_t tvo_resend_seconds; // trail
+bool tvo_ack_received; // trail
+//uint8_t tvo_counter; // trail
+struct rpl_tvo_local_t * tvo_resend; //trail
+
 char routing_table_buf[RT_STACKSIZE];
 int timer_over_pid;
 int interval_over_pid;
@@ -85,12 +98,19 @@ void init_trickle(void)
         return;
     }
 
-    dao_delay_over_buf  =  calloc(DAO_DELAY_STACKSIZE, sizeof(char));
+ //   dao_delay_over_buf  =  calloc(DAO_DELAY_STACKSIZE, sizeof(char));
 
-    if (dao_delay_over_buf == NULL) {
-        puts("[ERROR] Could not allocate enough memory for interval_over_buf!");
-        return;
-    }
+ //   if (dao_delay_over_buf == NULL) {
+ //       puts("[ERROR] Could not allocate enough memory for interval_over_buf!");
+ //       return;
+ //   }
+
+    //trail
+    tvo_delay_over_buf  =  calloc(TVO_DELAY_STACKSIZE,sizeof(char));
+        if(tvo_delay_over_buf == NULL){
+            puts("[ERROR] Could not allocate enough memory for interval_over_buf!");
+            return;
+        }
 
     /* Create threads */
     ack_received = true;
@@ -101,12 +121,18 @@ void init_trickle(void)
     interval_over_pid = thread_create(interval_over_buf, TRICKLE_INTERVAL_STACKSIZE,
                                       PRIORITY_MAIN - 1, CREATE_STACKTEST,
                                       trickle_interval_over, "trickle_interval_over");
-    dao_delay_over_pid = thread_create(dao_delay_over_buf, DAO_DELAY_STACKSIZE,
-                                       PRIORITY_MAIN - 1, CREATE_STACKTEST,
-                                       dao_delay_over, "dao_delay_over");
+  //  dao_delay_over_pid = thread_create(dao_delay_over_buf, DAO_DELAY_STACKSIZE,
+  //                                     PRIORITY_MAIN - 1, CREATE_STACKTEST,
+  //                                     dao_delay_over, "dao_delay_over");
     rt_timer_over_pid = thread_create(routing_table_buf, RT_STACKSIZE,
                                       PRIORITY_MAIN - 1, CREATE_STACKTEST,
                                       rt_timer_over, "rt_timer_over");
+    //trail
+    tvo_ack_received = true;
+    tvo_delay_over_pid = thread_create(tvo_delay_over_buf, TVO_DELAY_STACKSIZE,
+                                                                                      PRIORITY_MAIN-1, CREATE_STACKTEST,
+                                                                                      tvo_delay_over, "tvo_delay_over");
+
 }
 
 void start_trickle(uint8_t DIOIntMin, uint8_t DIOIntDoubl,
@@ -157,7 +183,7 @@ void trickle_interval_over(void)
     while (1) {
         thread_sleep();
         I = I * 2;
-        printf("TRICKLE new Interval %"PRIu32"\n", I);
+        printf("Setting new TRICKLE interval to %"PRIu32" ms\n", I);
 
         if (I == 0) {
             puts("[WARNING] Interval was 0");
@@ -191,6 +217,97 @@ void trickle_interval_over(void)
     }
 
 }
+
+//trail
+void tvo_delay_over(void){
+
+        while(1){
+
+                thread_sleep();
+
+                //if((tvo_ack_received == false) && (tvo_counter < TVO_SEND_RETRIES)){
+         //       if(tvo_counter < TVO_SEND_RETRIES){
+ //                       tvo_counter++;
+                        rpl_dodag_t * mydodag = rpl_get_my_dodag();
+
+/*
+                        struct rpl_tvo_t tvo;
+                        //rpl_tvo_init(&tvo);
+
+                        memcpy(&tvo, tvo_resend, sizeof(tvo));
+
+                        //printf("\n(checking trickle) tvo_nonce: %u, tvo_rank: %u, resend_nonce: %u, resend_rank: %u \n\n", tvo.nonce, tvo.rank, tvo_resend->nonce, tvo_resend->rank);
+
+                        printf("*RE*");
+                        send_TVO(&(tvo_resend->dst_addr), &tvo, NULL);
+*/
+                        resend_tvos();
+                        tvo_time = timex_set(tvo_resend_seconds, 0);
+                        vtimer_remove(&tvo_timer);
+                        vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
+    //            }
+        //        else if (tvo_ack_received == false){
+        //                long_delay_tvo();
+        //        }
+        }
+}
+
+/*
+//trail
+void received_tvo_ack()
+{
+    printf("\n SETTING TVO_ACK_RECEIVED TO TRUE\n\n");
+    tvo_ack_received = true;
+    long_delay_tvo();
+}
+
+//trail
+void set_tvo_auto_send(){
+        if(tvo_auto_send == true){
+                printf("(trickle.c) setting tvo_auto_send to false (enable with 'a')\n");
+                tvo_auto_send = false;
+                long_delay_tvo();
+        }else{
+                printf("(trickle.c) setting tvo_auto_send to true (disable with 'a')\n");
+                tvo_auto_send = true;
+                //delay_tvo();
+        }
+}
+*/
+
+//trail
+void delay_tvo(uint32_t seconds){
+	printf("setting new TVO delay to %u seconds\n",seconds);
+	tvo_time = timex_set(seconds,0);
+    tvo_resend_seconds = seconds;
+//    tvo_counter = 0;
+    tvo_ack_received = false;
+    vtimer_remove(&tvo_timer);
+    vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
+}
+
+/*
+//trail
+void delay_tvo(struct rpl_tvo_local_t * tvo){
+        tvo_resend = tvo; //trail
+        tvo_time = timex_set(DEFAULT_WAIT_FOR_TVO_ACK,0);
+        tvo_counter = 0;
+        tvo_ack_received = false;
+        vtimer_remove(&tvo_timer);
+        vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
+}
+*/
+
+/*
+//trail
+void long_delay_tvo(void){
+        tvo_time = timex_set(1000000,0);
+        tvo_counter = 0;
+        tvo_ack_received = false;
+        vtimer_remove(&tvo_timer);
+        vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
+}
+*/
 
 void delay_dao(void)
 {
@@ -271,3 +388,4 @@ void rt_timer_over(void)
         vtimer_usleep(1000000);
     }
 }
+
