@@ -661,7 +661,7 @@ void send_DIO(ipv6_addr_t *destination)
     }
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-  	printf("send DIO (myRank: %u, inst: %u) to %s (IPv6: ", myRank , myInst ,ipv6_addr_to_str(addr_str, destination));
+  	printf("send DIO (my rank: %u, inst: %u) to %s (IPv6: ", myRank , myInst ,ipv6_addr_to_str(addr_str, destination));
 
     if (mydodag == NULL) {
         DEBUG("Error - trying to send DIO without being part of a dodag.\n");
@@ -1133,21 +1133,20 @@ void recv_rpl_tvo(void){
 
 
 		//TVO is a request: on the way to the root
-		//am I tested? (rank == 0)
-		if(rpl_tvo_buf->rank == 0 && my_dodag != NULL && my_dodag->my_rank){
-			printf("Included rank (%u) into TVO \n", my_dodag->my_rank);
-			// tested: set to my rank
-			rpl_tvo_buf->rank = my_dodag->my_rank; //TODO memcpy
-		}
-		else if(my_dodag == NULL){
+		if(my_dodag == NULL){
 			printf("** Not in network, yet - dropping TVO **\n");
 			send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 			return;
 		}
+		//am I tested? (rank == 0)
+		else if(rpl_tvo_buf->rank == 0){
+			printf("Include rank (%u) into TVO \n", my_dodag->my_rank);
+			// tested: set to my rank
+			rpl_tvo_buf->rank = my_dodag->my_rank;
+		}
+		// not tested -> is rank OK?
 		else if(rpl_tvo_buf->rank <= my_dodag->my_rank) {
-			// not tested -> is rank OK?
 			// not OK -> DROP
-			//printf("(recv_rpl_tvo in rpl) RANK VIOLATION: received rank: %u - my rank: %u --> MSG IS DROPPED\n", rpl_tvo_buf->rank, my_dodag->my_rank);
 			printf("** TVO contains invalid rank: %u **\n", rpl_tvo_buf->rank);
 			send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 			return;
@@ -1155,7 +1154,6 @@ void recv_rpl_tvo(void){
 		//rank OK, NOT tested -> continue
 		// am I root?
 		if(i_am_root){
-
 			rpl_tvo_signature_buf = get_tvo_signature_buf(TVO_BASE_LEN);
 			memset(rpl_tvo_signature_buf, 0, sizeof(*rpl_tvo_signature_buf));
 			printf("Signing TVO ... ");
@@ -1242,13 +1240,13 @@ void recv_rpl_dio(void)
       else{
     	  myRank = mydodag->my_rank;
     	  if(rpl_dio_buf->rank >= myRank){
-    		  printf("received DIO (Rank: %u / Mine: %u / Inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    		  printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
     		  printf(" ---> ignoring DIO due to greater/equal rank \n");
     		  return;
     	  }
       }
 
-    printf("received DIO (Rank: %u / Mine: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank, rpl_dio_buf->rpl_instanceid,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank, rpl_dio_buf->rpl_instanceid,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
     uint8_t trail_index;
     uint8_t flag_send_TVO = 0;
