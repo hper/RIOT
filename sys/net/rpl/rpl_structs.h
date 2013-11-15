@@ -89,7 +89,7 @@
 #define INFINITE_RANK 0xFFFF
 #define RPL_DEFAULT_INSTANCE 0
 #define DEFAULT_PATH_CONTROL_SIZE 0
-#define DEFAULT_DIO_INTERVAL_MIN 9
+#define DEFAULT_DIO_INTERVAL_MIN 11
 /* standard value: */
 /* #define DEFAULT_DIO_INTERVAL_MIN 3 */
 #define DEFAULT_DIO_INTERVAL_DOUBLINGS 7
@@ -131,10 +131,10 @@
 #define TVO_BASE_LEN                27 // trail tvo 26 + 48 byte signature
 #define TVO_ACK_LEN                  3 // trail tvo
 #define TVO_LOCAL_BUFFER_LEN        10 //trail: for TVO ACK keep TVOs
-#define DEFAULT_WAIT_FOR_TVO_ACK     3 // trail TVO
+#define DEFAULT_WAIT_FOR_TVO_ACK     4 // trail TVO
 #define LONG_WAIT_FOR_TVO_ACK  1000000 // trail TVO
 #define TEST_WAIT_FOR_TVO_ACK        10000 // trail TVO
-#define TVO_SEND_RETRIES             3 // trail TVO
+#define TVO_SEND_RETRIES             20 // trail TVO
 
 
 //trail signature

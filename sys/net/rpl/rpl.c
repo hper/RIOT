@@ -544,7 +544,8 @@ uint8_t is_parent_verified(ipv6_addr_t * src_addr, uint16_t dio_rank){
 	}
 	else if (parent->rank != dio_rank) {
 		// TODO may have to delete parent first (?)
-		printf("parent must have changed his rank - return false\n");
+		rpl_delete_parent(parent);
+		printf("parent must have changed his rank - delete parent and return false\n");
 		return 0;
 	}
 	else{
@@ -626,13 +627,17 @@ void join_dodag(rpl_dodag_t * dio_dodag, ipv6_addr_t * src_addr, uint16_t parent
 	    rpl_parent_update(parent);
 
 	    char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	    printf("Update parent (rank %u): %s (IPv6)\n", parent->rank, ipv6_addr_to_str(addr_str, &(parent->addr)));
+	    //printf("Update parent (rank %u): %s\n", parent->rank, ipv6_addr_to_str(addr_str, &(parent->addr)));
+	    printf("Update parent *ID %u* (rank %u)\n", parent->addr.uint8[15], parent->rank);
 
+	    //trail: disable downward routes
 	    if (rpl_equal_id(&parent->addr, &my_dodag->my_preferred_parent->addr) && (parent->dtsn != parent_dtsn)) {
-	        delay_dao();
+	    	printf("\n*\n*\n ********** ignore DTSN and DAO update *********** \n*\n*\n");
+	    	// delay_dao();
 	    }
-
+	 //   printf(" ----- ignore this ");
 	    parent->dtsn = parent_dtsn;
+	 //   printf(" ----- \n");
 }
 
 
@@ -661,7 +666,8 @@ void send_DIO(ipv6_addr_t *destination)
     }
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-  	printf("send DIO (my rank: %u, inst: %u) to %s (IPv6: ", myRank , myInst ,ipv6_addr_to_str(addr_str, destination));
+    //printf("send DIO (my rank: %u, inst: %u) to %s (IPv6: ", myRank , myInst ,ipv6_addr_to_str(addr_str, destination));
+  	printf("send DIO to MCAST (my rank: %u, inst: %u, ", myRank , myInst);
 
     if (mydodag == NULL) {
         DEBUG("Error - trying to send DIO without being part of a dodag.\n");
@@ -731,6 +737,9 @@ void send_DIS(ipv6_addr_t *destination)
 
 void send_DAO(ipv6_addr_t *destination, uint8_t lifetime, bool default_lifetime, uint8_t start_index)
 {
+
+	printf("\n ** CALLED FUNCTION send_DAO (DAOs DISABLED -> RETURN) ** \n\n");
+	return;
 
     if (i_am_root) {
         return;
@@ -872,8 +881,11 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 //	ipv6_addr_set_all_nodes_addr(&mcast);
 //	ipv6_addr_set_all_nodes_addr(destination);
 
+
+
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("send TVO (seq: %u) to %s (IPv6: ", tvo->tvo_seq , ipv6_addr_to_str(addr_str, destination));
+	//printf("send TVO (seq: %u) to %s (IPv6: ", tvo->tvo_seq , ipv6_addr_to_str(addr_str, destination));
+	printf("send TVO to *ID %u* (seq: %u) (", destination->uint8[15], tvo->tvo_seq);
 
 	mutex_lock(&rpl_send_mutex);
 	rpl_dodag_t * mydodag;
@@ -930,12 +942,9 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 void send_TVO_ACK(ipv6_addr_t *destination, uint8_t sequence_number)
 {
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("send TVO-ACK (seq: %u) to %s (IPv6: ", sequence_number, ipv6_addr_to_str(addr_str, destination));
+	//printf("send TVO-ACK (seq: %u) to %s (IPv6: ", sequence_number, ipv6_addr_to_str(addr_str, destination));
+	printf("send TVO-ACK to *ID %u* (seq: %u) (", destination->uint8[15], sequence_number);
 
-    #if ENABLE_DEBUG
-    char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("%s\n", ipv6_addr_to_str(addr_str, destination));
-    #endif
     rpl_dodag_t *my_dodag;
     my_dodag = rpl_get_my_dodag();
 
@@ -969,13 +978,14 @@ void rpl_process(void)
 
     while (1) {
         msg_receive(&m_recv);
+        mutex_lock(&rpl_recv_mutex);
         uint8_t *code;
         code = ((uint8_t *)m_recv.content.ptr);
         /* differentiate packet types */
         ipv6_buf = ipv6_get_buf();
         memcpy(&rpl_buffer, ipv6_buf, ipv6_buf->length + IPV6_HDR_LEN);
 
-        mutex_lock(&rpl_recv_mutex);
+//        mutex_lock(&rpl_recv_mutex);
 
         switch (*code) {
             case (ICMP_CODE_DIS): {
@@ -1035,7 +1045,8 @@ void recv_rpl_tvo(void){
 
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
-	printf("received TVO (seq: %u) from %s (IPv6)\n", rpl_tvo_buf->tvo_seq, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+	//printf("received TVO (seq: %u) from %s (IPv6)\n", rpl_tvo_buf->tvo_seq, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+	printf("received TVO from *ID %u* (seq: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_tvo_buf->tvo_seq);
 
 	//send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 
@@ -1209,7 +1220,8 @@ void recv_rpl_tvo_ack(void)
     rpl_tvo_ack_buf = get_rpl_tvo_ack_buf();
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
-    printf("\n**** received TVO-ACK (seq: %u) from %s (IPv6)\n\n", rpl_tvo_ack_buf->tvo_seq ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    //printf("*** received TVO-ACK (seq: %u) from %s\n", rpl_tvo_ack_buf->tvo_seq ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    printf("*** received TVO-ACK from *ID %u* (seq: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_tvo_ack_buf->tvo_seq);
 
     if (rpl_tvo_ack_buf->status != 0) {
         return;
@@ -1240,13 +1252,15 @@ void recv_rpl_dio(void)
       else{
     	  myRank = mydodag->my_rank;
     	  if(rpl_dio_buf->rank >= myRank){
-    		  printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    		  //printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    		  printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
     		  printf(" ---> ignoring DIO due to greater/equal rank \n");
     		  return;
     	  }
       }
 
-    printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank, rpl_dio_buf->rpl_instanceid,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+    //printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank, rpl_dio_buf->rpl_instanceid,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+      printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
 
     uint8_t trail_index;
     uint8_t flag_send_TVO = 0;
@@ -1661,7 +1675,7 @@ void recv_rpl_dao(void)
 
     if (increment_seq) {
         RPL_COUNTER_INCREMENT(my_dodag->dao_seq);
-        delay_dao();
+       // delay_dao();//trail disable downward routes
     }
 }
 

@@ -335,7 +335,7 @@ void dao_delay_over(void)
 
         if ((ack_received == false) && (dao_counter < DAO_SEND_RETRIES)) {
             dao_counter++;
-            send_DAO(NULL, 0, true, 0);
+       //     send_DAO(NULL, 0, true, 0);
             dao_time = timex_set(DEFAULT_WAIT_FOR_DAO_ACK, 0);
             vtimer_set_wakeup(&dao_timer, dao_time, dao_delay_over_pid);
         }
@@ -348,7 +348,7 @@ void dao_delay_over(void)
 void dao_ack_received()
 {
     ack_received = true;
-    long_delay_dao();
+   // long_delay_dao(); //trail disable downward routes
 }
 
 void rt_timer_over(void)

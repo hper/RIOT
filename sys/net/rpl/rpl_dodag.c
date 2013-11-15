@@ -159,20 +159,20 @@ bool rpl_equal_id(ipv6_addr_t *id1, ipv6_addr_t *id2)
 }
 
 //trail (test) print parents)
-void rpl_print_parents(void)
+void rpl_print_parents(uint16_t my_addr, uint16_t rank)
 {
     rpl_parent_t *parent;
     rpl_parent_t *end;
 
     printf("---------------------------\n");
-    printf("PARENTS\n");
+    printf("PARENTS (My ID: %u, my rank: %u)\n", my_addr, rank);
     printf("---------------------------\n");
 
     for (parent = &parents[0], end = parents + RPL_MAX_PARENTS; parent < end; parent++) {
         if (parent->used == 0) {
-        	printf("*UNUSED*   ID: %u, rank: %u, lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
+        	//printf("*UNUSED*   ID: %u rank: %u lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
         } else{
-        	printf("*USED* ID: %u, rank: %u, lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
+        	printf("*USED* ID: %u rank: %u lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
         }
     }
     printf("--------------\n");
@@ -287,13 +287,13 @@ rpl_parent_t *rpl_find_preferred_parent(void)
     if (!rpl_equal_id(&my_dodag->my_preferred_parent->addr, &best->addr)) {
         if (my_dodag->mop != NO_DOWNWARD_ROUTES) {
             /* send DAO with ZERO_LIFETIME to old parent */
-            send_DAO(&my_dodag->my_preferred_parent->addr, 0, false, 0);
+            // send_DAO(&my_dodag->my_preferred_parent->addr, 0, false, 0);
         }
 
         my_dodag->my_preferred_parent = best;
 
         if (my_dodag->mop != NO_DOWNWARD_ROUTES) {
-            delay_dao();
+           // delay_dao(); //trail: disable downward router
         }
 
         reset_trickletimer();
@@ -371,7 +371,7 @@ void rpl_join_dodag(rpl_dodag_t *dodag, ipv6_addr_t *parent, uint16_t parent_ran
     my_dodag->min_rank = my_dodag->my_rank;
 
     start_trickle(my_dodag->dio_min, my_dodag->dio_interval_doubling, my_dodag->dio_redundancy);
-    delay_dao();
+   // delay_dao(); //trail: disable downward routes
     printf("Calculated rank to %u (based on parent's rank %u)\n" , my_dodag->my_rank, parent_rank);
 
     //printf("done (rank: %u)\n", my_dodag->my_rank);
@@ -408,7 +408,7 @@ void rpl_global_repair(rpl_dodag_t *dodag, ipv6_addr_t *p_addr, uint16_t rank)
     		my_dodag->min_rank = attacker_dodag_rank;
     	}
         reset_trickletimer();
-        delay_dao();
+      //  delay_dao(); //trail disable downward routes
     }
 
     printf("Migrated to DODAG Version %d. My new Rank: %d\n", my_dodag->version,
