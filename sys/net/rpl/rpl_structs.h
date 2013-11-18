@@ -133,8 +133,8 @@
 #define TVO_LOCAL_BUFFER_LEN        10 //trail: for TVO ACK keep TVOs
 #define DEFAULT_WAIT_FOR_TVO_ACK     4 // trail TVO
 #define LONG_WAIT_FOR_TVO_ACK  1000000 // trail TVO
-#define TEST_WAIT_FOR_TVO_ACK        10000 // trail TVO
-#define TVO_SEND_RETRIES             20 // trail TVO
+#define TEST_WAIT_FOR_TVO_ACK        100000 // trail TVO
+#define TVO_SEND_RETRIES             10 // trail TVO
 
 
 //trail signature
@@ -163,8 +163,8 @@ struct __attribute__((packed)) rpl_tvo_local_t{
     uint32_t nonce;
     ipv6_addr_t src_addr;
     bool s_flag;
-    ipv6_addr_t dst_addr;
-    ipv6_addr_t prev_hop_addr;
+    ipv6_addr_t dst_addr; //next hop of TVO
+    ipv6_addr_t prev_hop_addr; // hop from which TVO has been received
     uint8_t his_tvo_seq;
     uint32_t timestamp_received;
     uint8_t number_resend;

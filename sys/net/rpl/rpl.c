@@ -32,6 +32,7 @@
 #include "sixlowpan/icmp.h"
 
 
+
 uint16_t global_tvo_counter = 1; // trail
 
 rpl_dodag_trail_t trail_temp_dodag; // trail
@@ -487,8 +488,20 @@ void resend_tvos(){
 				memcpy(&tvo, &tvo_local_buffer[i], sizeof(tvo));
 			//	tvo.tvo_seq = tvo_local_buffer[i].his_tvo_seq;
 				printf("*RE*");
+
+				//test: send via multicast
+	//			ipv6_addr_t next_hop;
+//				memcpy(&next_hop, &(ipv6_buf->srcaddr), sizeof(next_hop));
+
+			//	ipv6_addr_set_all_nodes_addr(&next_hop);
+			//	send_TVO(&next_hop, &tvo, NULL);
+
 				send_TVO(&tvo_local_buffer[i].dst_addr, &tvo, NULL);
+
 				tvo_local_buffer[i].number_resend++;
+				//usleep(500000);
+				timex_t time = timex_set(0, 250000);
+				vtimer_sleep(time);
 			}
 			if (tvo_local_buffer[i].number_resend >= TVO_SEND_RETRIES){
 				printf("max number of resends reached: freeing tvo buffer at %u\n",i);
@@ -525,11 +538,11 @@ uint8_t get_parent_from_trail_buffer(ipv6_addr_t * src_addr){
 
 	for(i=0;i<RPL_MAX_PARENTS;i++){
 		if(trail_parent_buffer[i].parent_addr.uint8[15] == src_addr->uint8[15] && trail_parent_buffer[i].in_progress == 1){
-			printf("Returning parent from TRAIL buffer at %u\n",i);
+			//printf("Returning parent from TRAIL buffer at %u\n",i);
 			return i;
 		}
 	}
-	printf("Parent not in TRAIL buffer\n");
+	//printf("Parent not in TRAIL buffer\n");
 	return 255;
 }
 
@@ -609,6 +622,14 @@ void join_dodag(rpl_dodag_t * dio_dodag, ipv6_addr_t * src_addr, uint16_t parent
 	    rpl_parent_t *parent;
 	    parent = rpl_find_parent(src_addr);
 
+	    my_dodag = rpl_get_my_dodag();
+
+	    if(parent != NULL && parent->rank >= my_dodag->my_rank){
+	    	printf("RANK ERROR: parent has greater or equal rank (%u >= %u) -> ignore parent \n", parent->rank, my_dodag->my_rank);
+	    	return;
+	    }
+
+
 	    if (parent == NULL) {
 	        /* add new parent candidate */
 	        parent = rpl_new_parent(my_dodag, src_addr, parent_rank);
@@ -623,18 +644,19 @@ void join_dodag(rpl_dodag_t * dio_dodag, ipv6_addr_t * src_addr, uint16_t parent
 	    }
 
 	    /* update parent rank */
+	    printf("Update parent *ID %u* (rank %u)\n", parent->addr.uint8[15], parent->rank);
 	    parent->rank = parent_rank;
 	    rpl_parent_update(parent);
 
 	    char addr_str[IPV6_MAX_ADDR_STR_LEN];
 	    //printf("Update parent (rank %u): %s\n", parent->rank, ipv6_addr_to_str(addr_str, &(parent->addr)));
-	    printf("Update parent *ID %u* (rank %u)\n", parent->addr.uint8[15], parent->rank);
+	   // printf("Update parent *ID %u* (rank %u)\n", parent->addr.uint8[15], parent->rank);
 
 	    //trail: disable downward routes
-	    if (rpl_equal_id(&parent->addr, &my_dodag->my_preferred_parent->addr) && (parent->dtsn != parent_dtsn)) {
-	    	printf("\n*\n*\n ********** ignore DTSN and DAO update *********** \n*\n*\n");
+	//    if (rpl_equal_id(&parent->addr, &my_dodag->my_preferred_parent->addr) && (parent->dtsn != parent_dtsn)) {
+	    	//printf("\n*\n*\n ********** ignore DTSN and DAO update *********** \n*\n*\n");
 	    	// delay_dao();
-	    }
+	//    }
 	 //   printf(" ----- ignore this ");
 	    parent->dtsn = parent_dtsn;
 	 //   printf(" ----- \n");
@@ -667,7 +689,8 @@ void send_DIO(ipv6_addr_t *destination)
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
     //printf("send DIO (my rank: %u, inst: %u) to %s (IPv6: ", myRank , myInst ,ipv6_addr_to_str(addr_str, destination));
-  	printf("send DIO to MCAST (my rank: %u, inst: %u, ", myRank , myInst);
+  //	printf("send DIO to MCAST (my rank: %u, inst: %u, ", myRank , myInst);
+  	printf("m: ID %u send msg DIO to MCAST #color0\n", my_address.uint8[15], destination->uint8[15]);
 
     if (mydodag == NULL) {
         DEBUG("Error - trying to send DIO without being part of a dodag.\n");
@@ -881,12 +904,16 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 //	ipv6_addr_set_all_nodes_addr(&mcast);
 //	ipv6_addr_set_all_nodes_addr(destination);
 
-
-
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
 	//printf("send TVO (seq: %u) to %s (IPv6: ", tvo->tvo_seq , ipv6_addr_to_str(addr_str, destination));
-	printf("send TVO to *ID %u* (seq: %u) (", destination->uint8[15], tvo->tvo_seq);
+	//printf("send TVO to *ID %u* (seq: %u) (", destination->uint8[15], tvo->tvo_seq);
 
+	if(tvo->s_flag){
+		printf("m: ID %u send msg TVO(%u) to ID %u #color2\n", my_address.uint8[15], tvo->tvo_seq, destination->uint8[15]);
+	}
+	else {
+		printf("m: ID %u send msg TVO(%u) to ID %u #color1\n", my_address.uint8[15], tvo->tvo_seq, destination->uint8[15]);
+	}
 	mutex_lock(&rpl_send_mutex);
 	rpl_dodag_t * mydodag;
 
@@ -943,7 +970,9 @@ void send_TVO_ACK(ipv6_addr_t *destination, uint8_t sequence_number)
 {
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
 	//printf("send TVO-ACK (seq: %u) to %s (IPv6: ", sequence_number, ipv6_addr_to_str(addr_str, destination));
-	printf("send TVO-ACK to *ID %u* (seq: %u) (", destination->uint8[15], sequence_number);
+	//printf("send TVO-ACK to *ID %u* (seq: %u) (", destination->uint8[15], sequence_number);
+
+	printf("m: ID %u send msg TVO-ACK(%u) to ID %u #color3\n", my_address.uint8[15], sequence_number, destination->uint8[15]);
 
     rpl_dodag_t *my_dodag;
     my_dodag = rpl_get_my_dodag();
@@ -1046,7 +1075,8 @@ void recv_rpl_tvo(void){
 
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
 	//printf("received TVO (seq: %u) from %s (IPv6)\n", rpl_tvo_buf->tvo_seq, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
-	printf("received TVO from *ID %u* (seq: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_tvo_buf->tvo_seq);
+	//printf("received TVO from *ID %u* (seq: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_tvo_buf->tvo_seq);
+//	printf("m: ID %u received msg TVO(%u) from ID %u #color2\n", my_address.uint8[15], rpl_tvo_buf->tvo_seq, ipv6_buf->srcaddr.uint8[15]);
 
 	//send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 
@@ -1069,7 +1099,9 @@ void recv_rpl_tvo(void){
 		  * --> acken und forwarden wäre entkoppelt -> "löschen, da ack erhalten" hat dann nichts mehr mit
 		  *  "sollte die TVO noch acken" zu tun.
 		  */
-		 printf("\n Already received TVO (seq: %u) from %s\n", rpl_tvo_buf->tvo_seq, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+		// printf("\n Already received TVO (seq: %u) from %s\n", rpl_tvo_buf->tvo_seq, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
+
+		 printf("m: ID %u received msg TVO(%u) from ID %u #color10\n", my_address.uint8[15], rpl_tvo_buf->tvo_seq, ipv6_buf->srcaddr.uint8[15]);
 		 send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 		 return;
 	 }
@@ -1079,6 +1111,9 @@ void recv_rpl_tvo(void){
 	}
 
 	if(rpl_tvo_buf->s_flag){ //response
+
+		printf("m: ID %u received msg TVO(%u) from ID %u #color9\n", my_address.uint8[15], rpl_tvo_buf->tvo_seq, ipv6_buf->srcaddr.uint8[15]);
+
 		if(rpl_equal_id(&rpl_tvo_buf->src_addr, &my_address)){
 
 			//am I the source?
@@ -1132,21 +1167,12 @@ void recv_rpl_tvo(void){
 		/*
 		 * received tvo on way to root
 		 */
-
-		// delete first in case a better entry is available
-		rpl_del_routing_entry(&rpl_tvo_buf->src_addr);
-		rpl_del_routing_entry(&ipv6_buf->srcaddr);
-
-		//add downward routing entry to send TVO back to source
-		rpl_add_routing_entry(&rpl_tvo_buf->src_addr, &ipv6_buf->srcaddr, 1000);
-		//add downward routing entry for next hop (one-hop neighbor)
-		rpl_add_routing_entry(&ipv6_buf->srcaddr, &ipv6_buf->srcaddr, 1000);
-
+		printf("m: ID %u received msg TVO(%u) from ID %u #color8\n", my_address.uint8[15], rpl_tvo_buf->tvo_seq, ipv6_buf->srcaddr.uint8[15]);
 
 		//TVO is a request: on the way to the root
 		if(my_dodag == NULL){
 			printf("** Not in network, yet - dropping TVO **\n");
-			send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
+			//send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 			return;
 		}
 		//am I tested? (rank == 0)
@@ -1162,6 +1188,16 @@ void recv_rpl_tvo(void){
 			send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 			return;
 		}
+
+		// delete first in case a better entry is available
+		rpl_del_routing_entry(&rpl_tvo_buf->src_addr);
+		rpl_del_routing_entry(&ipv6_buf->srcaddr);
+
+		//add downward routing entry to send TVO back to source
+		rpl_add_routing_entry(&rpl_tvo_buf->src_addr, &ipv6_buf->srcaddr, 1000);
+		//add downward routing entry for next hop (one-hop neighbor)
+		rpl_add_routing_entry(&ipv6_buf->srcaddr, &ipv6_buf->srcaddr, 1000);
+
 		//rank OK, NOT tested -> continue
 		// am I root?
 		if(i_am_root){
@@ -1221,7 +1257,9 @@ void recv_rpl_tvo_ack(void)
 
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
     //printf("*** received TVO-ACK (seq: %u) from %s\n", rpl_tvo_ack_buf->tvo_seq ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
-    printf("*** received TVO-ACK from *ID %u* (seq: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_tvo_ack_buf->tvo_seq);
+   // printf("*** received TVO-ACK from *ID %u* (seq: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_tvo_ack_buf->tvo_seq);
+    printf("m: ID %u received msg TVO-ACK(%u) from ID %u #color11\n", my_address.uint8[15], rpl_tvo_buf->tvo_seq, ipv6_buf->srcaddr.uint8[15]);
+
 
     if (rpl_tvo_ack_buf->status != 0) {
         return;
@@ -1253,15 +1291,16 @@ void recv_rpl_dio(void)
     	  myRank = mydodag->my_rank;
     	  if(rpl_dio_buf->rank >= myRank){
     		  //printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
-    		  printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
-    		  printf(" ---> ignoring DIO due to greater/equal rank \n");
+    		  //printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
+    		 // printf(" ---> ignoring DIO due to greater/equal rank \n");
+    		  printf("m: ID %u received msg DIO from ID %u #color7\n", my_address.uint8[15], ipv6_buf->srcaddr.uint8[15]);
     		  return;
     	  }
       }
 
     //printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank, rpl_dio_buf->rpl_instanceid,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
-      printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
-
+     // printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
+      printf("m: ID %u received msg DIO from ID %u #color6\n", my_address.uint8[15], ipv6_buf->srcaddr.uint8[15]);
     uint8_t trail_index;
     uint8_t flag_send_TVO = 0;
     if(do_trail){
@@ -1295,7 +1334,7 @@ void recv_rpl_dio(void)
 			}
 			else {
 
-				//parent possibly chose differnt rank
+				//parent possibly chose different rank
 				if(rpl_dio_buf->rank != trail_parent_buffer[trail_index].parent_rank){
 					//re-schedule TVO
 					flag_send_TVO = 1;
@@ -1490,7 +1529,7 @@ void recv_rpl_dio(void)
 		ipv6_addr_t next_hop;
 		memcpy(&next_hop, &(ipv6_buf->srcaddr), sizeof(next_hop));
 		rpl_add_routing_entry(&ipv6_buf->srcaddr, &ipv6_buf->srcaddr, 1000);
-		//	ipv6_addr_set_all_nodes_addr(&next_hop);
+	//	ipv6_addr_set_all_nodes_addr(&next_hop);
 
 		//////////
 		struct rpl_tvo_local_t tvo_inst;
@@ -1505,7 +1544,7 @@ void recv_rpl_dio(void)
 		vtimer_now(&now);
 		tvo_inst.timestamp_received = now.microseconds;
 		//save destination / source
-		memcpy(&(tvo_inst.dst_addr), &next_hop, sizeof(tvo_inst.dst_addr));
+		memcpy(&(tvo_inst.dst_addr), &ipv6_buf->srcaddr, sizeof(tvo_inst.dst_addr));
 		// save_tvo_locally(local_tvo);
 		save_tvo_locally(&tvo_inst);
 		/////////
@@ -1740,7 +1779,7 @@ void rpl_send(ipv6_addr_t *destination, uint8_t *payload, uint16_t p_len, uint8_
 
     if (ipv6_addr_is_multicast(&ipv6_send_buf->destaddr)) {
     	 //printf("(TEST DEBUG) send RPL packet (multicast) payload: %u / packet: %u to %x\n",p_len, packet_length, ipv6_send_buf->destaddr.uint16[4]);
-    	printf("multicast, %u bytes)\n",packet_length);
+    //	printf("multicast, %u bytes)\n",packet_length);
         sixlowpan_lowpan_sendto((ieee_802154_long_t *) &(ipv6_send_buf->destaddr.uint16[4]), 
                                 (uint8_t *)ipv6_send_buf,
                                 packet_length);
@@ -1766,7 +1805,7 @@ void rpl_send(ipv6_addr_t *destination, uint8_t *payload, uint16_t p_len, uint8_
         }
 
     //    printf("(TEST DEBUG) send RPL packet (unicast) payload: %u / packet: %u to %x\n",p_len, packet_length, next_hop->uint16[4]);
-        printf("unicast, %u bytes)\n", packet_length);
+    //    printf("unicast, %u bytes)\n", packet_length);
         sixlowpan_lowpan_sendto((ieee_802154_long_t *) &(next_hop->uint16[4]), 
                                 (uint8_t *)ipv6_send_buf,
                                 packet_length);
@@ -1791,12 +1830,12 @@ void rpl_add_routing_entry(ipv6_addr_t *addr, ipv6_addr_t *next_hop, uint16_t li
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
 
     if (entry != NULL) {
-    	printf("Update downward route to %s (IPv6)\n", ipv6_addr_to_str(addr_str, addr));
+ //   	printf("Update downward route to %s (IPv6)\n", ipv6_addr_to_str(addr_str, addr));
         entry->lifetime = lifetime;
         return;
     }
 
-    printf("Include downward route to %s (IPv6)\n", ipv6_addr_to_str(addr_str, addr));
+ //   printf("Include downward route to %s (IPv6)\n", ipv6_addr_to_str(addr_str, addr));
 
     for (uint8_t i = 0; i < RPL_MAX_ROUTING_ENTRIES; i++) {
         if (!routing_table[i].used) {
@@ -1814,7 +1853,7 @@ void rpl_del_routing_entry(ipv6_addr_t *addr)
 	char addr_str[IPV6_MAX_ADDR_STR_LEN];
     for (uint8_t i = 0; i < RPL_MAX_ROUTING_ENTRIES; i++) {
         if (routing_table[i].used && rpl_equal_id(&routing_table[i].address, addr)) {
-        	printf("Delete downward route to %s (IPv6)\n", ipv6_addr_to_str(addr_str, addr));
+        	//printf("Delete downward route to %s (IPv6)\n", ipv6_addr_to_str(addr_str, addr));
             memset(&routing_table[i], 0, sizeof(routing_table[i]));
             return;
         }

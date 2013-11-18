@@ -164,6 +164,13 @@ void rpl_print_parents(uint16_t my_addr, uint16_t rank)
     rpl_parent_t *parent;
     rpl_parent_t *end;
 
+    rpl_parent_t *pref_parent;
+
+    rpl_dodag_t * mydodag = rpl_get_my_dodag();
+    if(mydodag != NULL){
+    	pref_parent = mydodag->my_preferred_parent;
+    }
+
     printf("---------------------------\n");
     printf("PARENTS (My ID: %u, my rank: %u)\n", my_addr, rank);
     printf("---------------------------\n");
@@ -172,8 +179,14 @@ void rpl_print_parents(uint16_t my_addr, uint16_t rank)
         if (parent->used == 0) {
         	//printf("*UNUSED*   ID: %u rank: %u lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
         } else{
-        	printf("*USED* ID: %u rank: %u lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
+        	if(pref_parent != NULL && pref_parent->addr.uint8[15] == parent->addr.uint8[15]){
+        		printf("*USED* ID: %u rank: %u lifetime: %u (PREFERRED)\n",parent->addr.uint8[15], parent->rank, parent->lifetime);
+        	}
+        	else {
+        		printf("*USED* ID: %u rank: %u lifetime: %u \n",parent->addr.uint8[15], parent->rank, parent->lifetime);
+        	}
         }
+
     }
     printf("--------------\n");
 }
@@ -193,6 +206,13 @@ rpl_parent_t *rpl_new_parent(rpl_dodag_t *dodag, ipv6_addr_t *address, uint16_t 
             parent->dodag = dodag;
             /* dtsn is set at the end of recv_dio function */
             parent->dtsn = 0;
+
+        	ipv6_addr_t ll_address;
+        	ipv6_addr_t my_address;
+        	ipv6_addr_set_link_local_prefix(&ll_address);
+        	ipv6_iface_get_best_src_addr(&my_address, &ll_address);
+            printf("p_s: ID %u selected ID %u as parent #color15\n", my_address.uint8[15], parent->addr.uint8[15]);
+
             return parent;
         }
     }
@@ -225,6 +245,13 @@ void rpl_delete_parent(rpl_parent_t *parent)
     }
 
     memset(parent, 0, sizeof(*parent));
+
+	ipv6_addr_t ll_address;
+	ipv6_addr_t my_address;
+	ipv6_addr_set_link_local_prefix(&ll_address);
+	ipv6_iface_get_best_src_addr(&my_address, &ll_address);
+    printf("p_d: ID %u deleted ID %u as parent #color15\n", my_address.uint8[15], parent->addr.uint8[15]);
+
 }
 
 void rpl_delete_worst_parent(void)
