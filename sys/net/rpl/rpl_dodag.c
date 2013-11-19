@@ -244,14 +244,13 @@ void rpl_delete_parent(rpl_parent_t *parent)
         my_dodag->my_preferred_parent = NULL;
     }
 
-    memset(parent, 0, sizeof(*parent));
-
 	ipv6_addr_t ll_address;
 	ipv6_addr_t my_address;
 	ipv6_addr_set_link_local_prefix(&ll_address);
 	ipv6_iface_get_best_src_addr(&my_address, &ll_address);
     printf("p_d: ID %u deleted ID %u as parent #color15\n", my_address.uint8[15], parent->addr.uint8[15]);
 
+    memset(parent, 0, sizeof(*parent));
 }
 
 void rpl_delete_worst_parent(void)

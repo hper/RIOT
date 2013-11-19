@@ -371,7 +371,7 @@ typedef struct rpl_dodag_trail_t {
     uint8_t instance_id;
     //uint8_t pending;
     //uint8_t verified;
-    uint8_t in_progress;
+    uint8_t in_progress; //indicates if parent-verification is pending: not overwritten unless != 1
 }rpl_dodag_trail_t;
 
 #endif

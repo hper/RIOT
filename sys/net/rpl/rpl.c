@@ -35,15 +35,15 @@
 
 uint16_t global_tvo_counter = 1; // trail
 
-rpl_dodag_trail_t trail_temp_dodag; // trail
+//rpl_dodag_trail_t trail_temp_dodag; // trail
 rpl_dodag_trail_t trail_parent_buffer[RPL_MAX_PARENTS]; //trail: buffer parents when receiving DIOs
 
 uint8_t tvo_sequence_number = 0; // trail
 //uint8_t tvo_pending = 1; // trail: defines if a verification is pending
 //uint8_t tvo_parent_verified = 1; // trail: defines if a verification is pending
 uint8_t do_trail = 0; // trail: enables / disables trail on startup
-uint8_t attacker = 0; // trail
-uint16_t attacker_rank = 0; // trail
+uint8_t attacker = 0; // trail: enables / disables attacker mode on startup
+uint16_t attacker_rank = 0; // trail: rank of the attacker -> is constant
 
 
 struct rpl_tvo_local_t tvo_local_buffer[TVO_LOCAL_BUFFER_LEN]; //trail
@@ -325,6 +325,9 @@ void change_rank(uint16_t new_rank){
 
 	 mydodag->my_rank = new_rank;
 	 mydodag->min_rank = new_rank;
+
+	 printf("Calculated rank to %u (manually reset rank)\n" , mydodag->my_rank);
+
 }
 
 
@@ -469,6 +472,16 @@ void save_tvo_locally(struct rpl_tvo_local_t * tvo_copy){
 }
 
 //trail
+void reset_tvo_timer(){
+	printf("**Node %u: Resetting all TRAIL parents -> accepting all incoming DIOs\n**",my_address.uint8[15]);
+	uint8_t i;
+	for(i=0;i<RPL_MAX_PARENTS;i++){
+		memset(&trail_parent_buffer[i], 0, sizeof(rpl_dodag_trail_t));
+	}
+
+}
+
+//trail
 void resend_tvos(){
 	printf("\n   ########### CHECKING FOR TVO RESENDS ########\n\n");
 
@@ -524,7 +537,7 @@ uint8_t include_parent_into_trail_buffer(void){
 
 	for(i=0;i<sizeof(trail_parent_buffer);i++){
 		if(trail_parent_buffer[i].in_progress != 1){
-			memset(&trail_parent_buffer[i], 0, sizeof(trail_temp_dodag));
+			memset(&trail_parent_buffer[i], 0, sizeof(rpl_dodag_trail_t));
 			trail_parent_buffer[i].in_progress = 1;
 			printf("Including parent into TRAIL buffer at %u\n",i);
 			return i;
@@ -624,7 +637,7 @@ void join_dodag(rpl_dodag_t * dio_dodag, ipv6_addr_t * src_addr, uint16_t parent
 
 	    my_dodag = rpl_get_my_dodag();
 
-	    if(parent != NULL && parent->rank >= my_dodag->my_rank){
+	    if(attacker == 0 && parent != NULL && parent->rank >= my_dodag->my_rank){
 	    	printf("RANK ERROR: parent has greater or equal rank (%u >= %u) -> ignore parent \n", parent->rank, my_dodag->my_rank);
 	    	return;
 	    }
@@ -909,10 +922,10 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 	//printf("send TVO to *ID %u* (seq: %u) (", destination->uint8[15], tvo->tvo_seq);
 
 	if(tvo->s_flag){
-		printf("m: ID %u send msg TVO(%u) to ID %u #color2\n", my_address.uint8[15], tvo->tvo_seq, destination->uint8[15]);
+		printf("m: ID %u send msg TVO to ID %u #color2 - Seq. %u\n", my_address.uint8[15], destination->uint8[15], tvo->tvo_seq);
 	}
 	else {
-		printf("m: ID %u send msg TVO(%u) to ID %u #color1\n", my_address.uint8[15], tvo->tvo_seq, destination->uint8[15]);
+		printf("m: ID %u send msg TVO to ID %u #color1 - Seq. %u\n", my_address.uint8[15], destination->uint8[15], tvo->tvo_seq);
 	}
 	mutex_lock(&rpl_send_mutex);
 	rpl_dodag_t * mydodag;
@@ -972,7 +985,7 @@ void send_TVO_ACK(ipv6_addr_t *destination, uint8_t sequence_number)
 	//printf("send TVO-ACK (seq: %u) to %s (IPv6: ", sequence_number, ipv6_addr_to_str(addr_str, destination));
 	//printf("send TVO-ACK to *ID %u* (seq: %u) (", destination->uint8[15], sequence_number);
 
-	printf("m: ID %u send msg TVO-ACK(%u) to ID %u #color3\n", my_address.uint8[15], sequence_number, destination->uint8[15]);
+	printf("m: ID %u send msg TVO_ACK to ID %u #color3 - Seq. %u\n", my_address.uint8[15],destination->uint8[15], sequence_number);
 
     rpl_dodag_t *my_dodag;
     my_dodag = rpl_get_my_dodag();
@@ -1101,7 +1114,7 @@ void recv_rpl_tvo(void){
 		  */
 		// printf("\n Already received TVO (seq: %u) from %s\n", rpl_tvo_buf->tvo_seq, ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
 
-		 printf("m: ID %u received msg TVO(%u) from ID %u #color10\n", my_address.uint8[15], rpl_tvo_buf->tvo_seq, ipv6_buf->srcaddr.uint8[15]);
+		 printf("m: ID %u received msg TVO from ID %u #color10 - Seq. %u\n", my_address.uint8[15], ipv6_buf->srcaddr.uint8[15], rpl_tvo_buf->tvo_seq);
 		 send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
 		 return;
 	 }
@@ -1112,7 +1125,7 @@ void recv_rpl_tvo(void){
 
 	if(rpl_tvo_buf->s_flag){ //response
 
-		printf("m: ID %u received msg TVO(%u) from ID %u #color9\n", my_address.uint8[15], rpl_tvo_buf->tvo_seq, ipv6_buf->srcaddr.uint8[15]);
+		printf("m: ID %u received msg TVO from ID %u #color9 - Seq. %u\n", my_address.uint8[15], ipv6_buf->srcaddr.uint8[15], rpl_tvo_buf->tvo_seq);
 
 		if(rpl_equal_id(&rpl_tvo_buf->src_addr, &my_address)){
 
@@ -1137,6 +1150,16 @@ void recv_rpl_tvo(void){
 				if(dio_dodag.instance == NULL){
 					printf("\n(TEST DEBUG) dio_dodag.instance is NULL! .. trail_buf id: %u\n", trail_parent_buffer[trail_index].instance_id);
 				}
+
+				my_dodag = rpl_get_my_dodag();
+
+				if(my_dodag != NULL && my_dodag->my_rank <= trail_parent_buffer[trail_index].parent_rank){
+					printf("IGNORING TVO DUE TO RANK: my rank %u , parent rank %u\n", my_dodag->my_rank, trail_parent_buffer[trail_index].parent_rank);
+					trail_parent_buffer[trail_index].in_progress = 0; // free buffer
+					send_TVO_ACK(&(ipv6_buf->srcaddr), rpl_tvo_buf->tvo_seq);
+					return;
+				}
+
 				join_dodag(&dio_dodag, &trail_parent_buffer[trail_index].parent_addr, trail_parent_buffer[trail_index].parent_rank, trail_parent_buffer[trail_index].parent_dtsn);
 
 			//	trail_parent_buffer[trail_index].verified = 1; //verified
@@ -1167,7 +1190,7 @@ void recv_rpl_tvo(void){
 		/*
 		 * received tvo on way to root
 		 */
-		printf("m: ID %u received msg TVO(%u) from ID %u #color8\n", my_address.uint8[15], rpl_tvo_buf->tvo_seq, ipv6_buf->srcaddr.uint8[15]);
+		printf("m: ID %u received msg TVO from ID %u #color8 - Seq. %u\n", my_address.uint8[15], ipv6_buf->srcaddr.uint8[15], rpl_tvo_buf->tvo_seq);
 
 		//TVO is a request: on the way to the root
 		if(my_dodag == NULL){
@@ -1258,7 +1281,7 @@ void recv_rpl_tvo_ack(void)
     char addr_str[IPV6_MAX_ADDR_STR_LEN];
     //printf("*** received TVO-ACK (seq: %u) from %s\n", rpl_tvo_ack_buf->tvo_seq ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
    // printf("*** received TVO-ACK from *ID %u* (seq: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_tvo_ack_buf->tvo_seq);
-    printf("m: ID %u received msg TVO-ACK(%u) from ID %u #color11\n", my_address.uint8[15], rpl_tvo_buf->tvo_seq, ipv6_buf->srcaddr.uint8[15]);
+    printf("m: ID %u received msg TVO_ACK from ID %u #color11 - Seq. %u\n", my_address.uint8[15],  ipv6_buf->srcaddr.uint8[15], rpl_tvo_buf->tvo_seq);
 
 
     if (rpl_tvo_ack_buf->status != 0) {
@@ -1293,14 +1316,14 @@ void recv_rpl_dio(void)
     		  //printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
     		  //printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
     		 // printf(" ---> ignoring DIO due to greater/equal rank \n");
-    		  printf("m: ID %u received msg DIO(%u) from ID %u #color7\n", my_address.uint8[15], rpl_dio_buf->rank ,ipv6_buf->srcaddr.uint8[15]);
+    		  printf("m: ID %u received msg DIO from ID %u #color7 - Rank %u\n", my_address.uint8[15],ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank);
     		  return;
     	  }
       }
 
     //printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank, rpl_dio_buf->rpl_instanceid,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
      // printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
-      printf("m: ID %u received msg DIO(%u) from ID %u #color6\n", my_address.uint8[15], rpl_dio_buf->rank,ipv6_buf->srcaddr.uint8[15]);
+      printf("m: ID %u received msg DIO from ID %u #color6  - Rank %u\n", my_address.uint8[15], ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank);
     uint8_t trail_index;
     uint8_t flag_send_TVO = 0;
     if(do_trail){
