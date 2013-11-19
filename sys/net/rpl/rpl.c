@@ -1293,14 +1293,14 @@ void recv_rpl_dio(void)
     		  //printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid ,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
     		  //printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
     		 // printf(" ---> ignoring DIO due to greater/equal rank \n");
-    		  printf("m: ID %u received msg DIO from ID %u #color7\n", my_address.uint8[15], ipv6_buf->srcaddr.uint8[15]);
+    		  printf("m: ID %u received msg DIO(%u) from ID %u #color7\n", my_address.uint8[15], rpl_dio_buf->rank ,ipv6_buf->srcaddr.uint8[15]);
     		  return;
     	  }
       }
 
     //printf("received DIO (rank: %u / my rank: %u / inst: %u) from %s (IPv6)\n", rpl_dio_buf->rank, myRank, rpl_dio_buf->rpl_instanceid,ipv6_addr_to_str(addr_str, &(ipv6_buf->srcaddr)));
      // printf("received DIO from *ID %u* (rank: %u / my rank: %u / inst: %u)\n", ipv6_buf->srcaddr.uint8[15], rpl_dio_buf->rank, myRank,rpl_dio_buf->rpl_instanceid);
-      printf("m: ID %u received msg DIO from ID %u #color6\n", my_address.uint8[15], ipv6_buf->srcaddr.uint8[15]);
+      printf("m: ID %u received msg DIO(%u) from ID %u #color6\n", my_address.uint8[15], rpl_dio_buf->rank,ipv6_buf->srcaddr.uint8[15]);
     uint8_t trail_index;
     uint8_t flag_send_TVO = 0;
     if(do_trail){
