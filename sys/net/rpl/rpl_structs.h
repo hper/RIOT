@@ -132,8 +132,8 @@
 #define TVO_ACK_LEN                  3 // trail tvo
 #define TVO_LOCAL_BUFFER_LEN        10 //trail: for TVO ACK keep TVOs
 #define DEFAULT_WAIT_FOR_TVO_ACK     4 // trail TVO
-#define LONG_WAIT_FOR_TVO_ACK  1000000 // trail TVO
-#define TEST_WAIT_FOR_TVO_ACK        100000 // trail TVO
+#define LONG_WAIT_FOR_TVO_ACK        1000000 // trail TVO
+#define TEST_WAIT_FOR_TVO_ACK        1000000 // trail TVO
 #define TVO_SEND_RETRIES             10 // trail TVO
 
 

@@ -37,6 +37,7 @@ bool tvo_auto_send = false; // trail
 timex_t tvo_time; // trail
 vtimer_t tvo_timer; // trail
 uint32_t tvo_resend_seconds; // trail
+uint32_t tvo_resend_micro; // trail: random micro delay
 bool tvo_ack_received; // trail
 //uint8_t tvo_counter; // trail
 struct rpl_tvo_local_t * tvo_resend; //trail
@@ -242,7 +243,7 @@ void tvo_delay_over(void){
                         send_TVO(&(tvo_resend->dst_addr), &tvo, NULL);
 */
                         resend_tvos();
-                        tvo_time = timex_set(tvo_resend_seconds, 0);
+                        tvo_time = timex_set(tvo_resend_seconds, tvo_resend_micro);
                         vtimer_remove(&tvo_timer);
                         vtimer_set_wakeup(&tvo_timer, tvo_time, tvo_delay_over_pid);
     //            }
@@ -277,9 +278,17 @@ void set_tvo_auto_send(){
 
 //trail
 void delay_tvo(uint32_t seconds){
-	printf("setting new TVO delay to %u seconds\n",seconds);
-	tvo_time = timex_set(seconds,0);
+
+	//delay tvos differently: reduce risk of collisions by neighbors
+	timex_t now;
+	vtimer_now(&now);
+	srand(now.microseconds);
+	uint32_t random = rand() % 1000000;
+
+	printf("setting new TVO delay to %u seconds and %u ms\n",seconds, (random/1000));
+	tvo_time = timex_set(seconds,random);
     tvo_resend_seconds = seconds;
+    tvo_resend_micro = random;
 //    tvo_counter = 0;
     tvo_ack_received = false;
     vtimer_remove(&tvo_timer);

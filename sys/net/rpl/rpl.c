@@ -44,6 +44,7 @@ uint8_t tvo_sequence_number = 0; // trail
 uint8_t do_trail = 0; // trail: enables / disables trail on startup
 uint8_t attacker = 0; // trail: enables / disables attacker mode on startup
 uint16_t attacker_rank = 0; // trail: rank of the attacker -> is constant
+uint16_t ignore_root_addr = 0;
 
 
 struct rpl_tvo_local_t tvo_local_buffer[TVO_LOCAL_BUFFER_LEN]; //trail
@@ -328,6 +329,10 @@ void change_rank(uint16_t new_rank){
 
 	 printf("Calculated rank to %u (manually reset rank)\n" , mydodag->my_rank);
 
+}
+
+void ignore_root(uint16_t root_addr){
+	ignore_root_addr = root_addr;
 }
 
 
@@ -921,10 +926,10 @@ void send_TVO(ipv6_addr_t * destination, struct rpl_tvo_t * tvo, rpl_tvo_signatu
 	//printf("send TVO (seq: %u) to %s (IPv6: ", tvo->tvo_seq , ipv6_addr_to_str(addr_str, destination));
 	//printf("send TVO to *ID %u* (seq: %u) (", destination->uint8[15], tvo->tvo_seq);
 
-	if(tvo->s_flag){
+	if(tvo->s_flag){ //send TVO downwards
 		printf("m: ID %u send msg TVO to ID %u #color2 - Seq. %u\n", my_address.uint8[15], destination->uint8[15], tvo->tvo_seq);
 	}
-	else {
+	else { //send TVO upwards
 		printf("m: ID %u send msg TVO to ID %u #color1 - Seq. %u\n", my_address.uint8[15], destination->uint8[15], tvo->tvo_seq);
 	}
 	mutex_lock(&rpl_send_mutex);
@@ -1025,50 +1030,61 @@ void rpl_process(void)
         code = ((uint8_t *)m_recv.content.ptr);
         /* differentiate packet types */
         ipv6_buf = ipv6_get_buf();
-        memcpy(&rpl_buffer, ipv6_buf, ipv6_buf->length + IPV6_HDR_LEN);
 
-//        mutex_lock(&rpl_recv_mutex);
+        // trail: for SAFEST DEMO ONLY - ignore root for "ideal" network (delete if-else)
+       // printf("\n\nSrc.adr: %u ... ignore_root_addr: %u\n\n",ipv6_buf->srcaddr.uint8[15], (uint8_t)ignore_root_addr);
+        if(ipv6_buf->srcaddr.uint8[15] == (uint8_t)ignore_root_addr){
+        	printf("Ignore node RPL message from node %u\n",ignore_root_addr);
+        	mutex_unlock(&rpl_recv_mutex);
+        	//return;
+        }
+        else {
 
-        switch (*code) {
-            case (ICMP_CODE_DIS): {
-                recv_rpl_dis();
-                mutex_unlock(&rpl_recv_mutex);
-                break;
-            }
+			memcpy(&rpl_buffer, ipv6_buf, ipv6_buf->length + IPV6_HDR_LEN);
 
-            case (ICMP_CODE_DIO): {
-                recv_rpl_dio();
-                mutex_unlock(&rpl_recv_mutex);
-                break;
-            }
+	//        mutex_lock(&rpl_recv_mutex);
 
-            case (ICMP_CODE_DAO): {
-                recv_rpl_dao();
-                mutex_unlock(&rpl_recv_mutex);
-                break;
-            }
+			switch (*code) {
+				case (ICMP_CODE_DIS): {
+					recv_rpl_dis();
+					mutex_unlock(&rpl_recv_mutex);
+					break;
+				}
 
-            case (ICMP_CODE_DAO_ACK): {
-                recv_rpl_dao_ack();
-                mutex_unlock(&rpl_recv_mutex);
-                break;
-            }
+				case (ICMP_CODE_DIO): {
+					recv_rpl_dio();
+					mutex_unlock(&rpl_recv_mutex);
+					break;
+				}
 
-            case (ICMP_CODE_TVO): {
-                recv_rpl_tvo();
-                mutex_unlock(&rpl_recv_mutex);
-                break;
-             }
+				case (ICMP_CODE_DAO): {
+					recv_rpl_dao();
+					mutex_unlock(&rpl_recv_mutex);
+					break;
+				}
 
-            case (ICMP_CODE_TVO_ACK): {
-                recv_rpl_tvo_ack();
-                mutex_unlock(&rpl_recv_mutex);
-                break;
-             }
+				case (ICMP_CODE_DAO_ACK): {
+					recv_rpl_dao_ack();
+					mutex_unlock(&rpl_recv_mutex);
+					break;
+				}
 
-            default:
-                mutex_unlock(&rpl_recv_mutex);
-                break;
+				case (ICMP_CODE_TVO): {
+					recv_rpl_tvo();
+					mutex_unlock(&rpl_recv_mutex);
+					break;
+				 }
+
+				case (ICMP_CODE_TVO_ACK): {
+					recv_rpl_tvo_ack();
+					mutex_unlock(&rpl_recv_mutex);
+					break;
+				 }
+
+				default:
+					mutex_unlock(&rpl_recv_mutex);
+					break;
+			}
         }
     }
 }
